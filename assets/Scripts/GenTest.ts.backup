@@ -1,9 +1,19 @@
 import { _decorator, Component, Node, Prefab, instantiate, UITransform, v3, JsonAsset, error, warn, log } from 'cc';
 const { ccclass, property } = _decorator;
 
+/**
+ * ============================================================================
+ * ENUMS & CONSTANTS
+ * ============================================================================
+ */
+
+/**
+ * Tile types for map generation
+ */
 enum TileType {
     EMPTY = '0',
     WALL = '1',
+    // Legacy tile codes (for backward compatibility)
     CORNER_UL = 'cul',
     CORNER_UR = 'cur',
     CORNER_BL = 'cbl',
@@ -22,7 +32,9 @@ enum TileType {
     END_R = 'er',
 }
 
-
+/**
+ * Configuration constants
+ */
 const CONFIG = {
     MIN_MAP_WIDTH: 3,
     MIN_MAP_HEIGHT: 3,
@@ -33,7 +45,15 @@ const CONFIG = {
     MAX_TILE_SIZE: 512,
 } as const;
 
+/**
+ * ============================================================================
+ * INTERFACES
+ * ============================================================================
+ */
 
+/**
+ * Neighbor pattern for context-aware tile detection
+ */
 interface NeighborPattern {
     top: boolean;
     bottom: boolean;
@@ -45,7 +65,9 @@ interface NeighborPattern {
     bottomRight: boolean;
 }
 
-
+/**
+ * Map data structure
+ */
 interface MapData {
     data: string[][];
     version?: string;
@@ -53,58 +75,68 @@ interface MapData {
     tileSize?: number;
 }
 
+/**
+ * ============================================================================
+ * MAP PREFABS CLASS
+ * ============================================================================
+ */
 
 @ccclass('MapPrefabs')
 export class MapPrefabs {
     @property({ type: Prefab, tooltip: "Góc trên-trái" })
-    upper_left_corner: Prefab | null = null;
+    upper_left_corner: Prefab = null;
 
     @property({ type: Prefab, tooltip: "Góc trên-phải" })
-    upper_right_corner: Prefab | null = null;
+    upper_right_corner: Prefab = null;
 
     @property({ type: Prefab, tooltip: "Góc dưới-trái" })
-    below_left_corner: Prefab | null = null;
+    below_left_corner: Prefab = null;
 
     @property({ type: Prefab, tooltip: "Góc dưới-phải" })
-    below_right_corner: Prefab | null = null;
+    below_right_corner: Prefab = null;
 
     @property({ type: Prefab, tooltip: "Viền trên" })
-    border_upper: Prefab | null = null;
+    border_upper: Prefab = null;
 
     @property({ type: Prefab, tooltip: "Viền dưới" })
-    border_below: Prefab | null = null;
+    border_below: Prefab = null;
 
     @property({ type: Prefab, tooltip: "Viền trái" })
-    border_left: Prefab | null = null;
+    border_left: Prefab = null;
 
     @property({ type: Prefab, tooltip: "Viền phải" })
-    border_right: Prefab | null = null;
+    border_right: Prefab = null;
 
     @property({ type: Prefab, tooltip: "Đầu chướng ngại vật (từ trên)" })
-    upper_start_obstacle: Prefab | null = null;
+    upper_start_obstacle: Prefab = null;
 
     @property({ type: Prefab, tooltip: "Đầu chướng ngại vật (từ dưới)" })
-    below_start_obstacle: Prefab | null = null;
+    below_start_obstacle: Prefab = null;
 
     @property({ type: Prefab, tooltip: "Chướng ngại vật dọc" })
-    obstacle: Prefab | null = null;
+    obstacle: Prefab = null;
 
     @property({ type: Prefab, tooltip: "Chướng ngại vật ngang" })
-    side_obstacle: Prefab | null = null;
+    side_obstacle: Prefab = null;
 
     @property({ type: Prefab, tooltip: "Đuôi chướng ngại vật (hướng lên)" })
-    upper_end_obstacle: Prefab | null = null;
+    upper_end_obstacle: Prefab = null;
 
     @property({ type: Prefab, tooltip: "Đuôi chướng ngại vật (hướng xuống)" })
-    below_end_obstacle: Prefab | null = null;
+    below_end_obstacle: Prefab = null;
 
     @property({ type: Prefab, tooltip: "Đuôi chướng ngại vật (hướng phải)" })
-    right_end_obstacle: Prefab | null = null;
+    right_end_obstacle: Prefab = null;
 
     @property({ type: Prefab, tooltip: "Đuôi chướng ngại vật (hướng trái)" })
-    left_end_obstacle: Prefab | null = null;
+    left_end_obstacle: Prefab = null;
 }
 
+/**
+ * ============================================================================
+ * MAIN COMPONENT
+ * ============================================================================
+ */
 
 @ccclass('SmartMapGenerator')
 export class SmartMapGenerator extends Component {
@@ -122,17 +154,18 @@ export class SmartMapGenerator extends Component {
         type: JsonAsset,
         tooltip: "File JSON chứa dữ liệu map (format: {data: string[][]})"
     })
-    mapLayoutJson: JsonAsset | null = null;
+    mapLayoutJson: JsonAsset = null;
 
     @property({ 
         type: Node, 
         tooltip: "Node container chứa tất cả các tiles" 
     })
-    mapContainer: Node | null = null;
+    mapContainer: Node = null;
 
     @property({
         tooltip: "Kích thước mỗi tile (pixel)",
-        range: [CONFIG.MIN_TILE_SIZE, CONFIG.MAX_TILE_SIZE]
+        min: CONFIG.MIN_TILE_SIZE,
+        max: CONFIG.MAX_TILE_SIZE
     })
     tileSize: number = CONFIG.DEFAULT_TILE_SIZE;
 
@@ -148,10 +181,18 @@ export class SmartMapGenerator extends Component {
     })
     debugMode: boolean = false;
 
+    // ========================================================================
+    // PRIVATE FIELDS
+    // ========================================================================
+
     private mapData: string[][] = [];
     private prefabMap: Map<string, Prefab> = new Map();
     private mapWidth: number = 0;
     private mapHeight: number = 0;
+
+    // ========================================================================
+    // LIFECYCLE METHODS
+    // ========================================================================
 
     onLoad() {
         this.debug('Component loaded');
@@ -180,6 +221,10 @@ export class SmartMapGenerator extends Component {
             this.enabled = false;
         }
     }
+
+    // ========================================================================
+    // VALIDATION
+    // ========================================================================
 
     /**
      * Validate all required components and settings
@@ -211,8 +256,11 @@ export class SmartMapGenerator extends Component {
         return true;
     }
 
+    /**
+     * Validate that all required prefabs are assigned
+     */
     private validatePrefabs(): boolean {
-        const requiredPrefabs: (keyof MapPrefabs)[] = [
+        const requiredPrefabs = [
             'upper_left_corner',
             'upper_right_corner',
             'below_left_corner',
@@ -248,6 +296,9 @@ export class SmartMapGenerator extends Component {
         return true;
     }
 
+    /**
+     * Validate map data structure and content
+     */
     private validateMapData(data: any): data is MapData {
         // Check if data exists
         if (!data) {
@@ -331,33 +382,46 @@ export class SmartMapGenerator extends Component {
         return true;
     }
 
+    // ========================================================================
+    // PREFAB MAPPING
+    // ========================================================================
+
+    /**
+     * Setup mapping between tile codes and prefabs
+     */
     private setupPrefabMap(): void {
         // Legacy tile codes mapping
-        this.prefabMap.set(TileType.CORNER_UL, this.mapPrefabs.upper_left_corner!);
-        this.prefabMap.set(TileType.CORNER_UR, this.mapPrefabs.upper_right_corner!);
-        this.prefabMap.set(TileType.CORNER_BL, this.mapPrefabs.below_left_corner!);
-        this.prefabMap.set(TileType.CORNER_BR, this.mapPrefabs.below_right_corner!);
-        this.prefabMap.set(TileType.BORDER_U, this.mapPrefabs.border_upper!);
-        this.prefabMap.set(TileType.BORDER_B, this.mapPrefabs.border_below!);
-        this.prefabMap.set(TileType.BORDER_L, this.mapPrefabs.border_left!);
-        this.prefabMap.set(TileType.BORDER_R, this.mapPrefabs.border_right!);
-        this.prefabMap.set(TileType.START_U, this.mapPrefabs.upper_start_obstacle!);
-        this.prefabMap.set(TileType.START_B, this.mapPrefabs.below_start_obstacle!);
-        this.prefabMap.set(TileType.OBSTACLE, this.mapPrefabs.obstacle!);
-        this.prefabMap.set(TileType.OBSTACLE_SIDE, this.mapPrefabs.side_obstacle!);
-        this.prefabMap.set(TileType.END_U, this.mapPrefabs.upper_end_obstacle!);
-        this.prefabMap.set(TileType.END_B, this.mapPrefabs.below_end_obstacle!);
-        this.prefabMap.set(TileType.END_L, this.mapPrefabs.left_end_obstacle!);
-        this.prefabMap.set(TileType.END_R, this.mapPrefabs.right_end_obstacle!);
+        this.prefabMap.set(TileType.CORNER_UL, this.mapPrefabs.upper_left_corner);
+        this.prefabMap.set(TileType.CORNER_UR, this.mapPrefabs.upper_right_corner);
+        this.prefabMap.set(TileType.CORNER_BL, this.mapPrefabs.below_left_corner);
+        this.prefabMap.set(TileType.CORNER_BR, this.mapPrefabs.below_right_corner);
+        this.prefabMap.set(TileType.BORDER_U, this.mapPrefabs.border_upper);
+        this.prefabMap.set(TileType.BORDER_B, this.mapPrefabs.border_below);
+        this.prefabMap.set(TileType.BORDER_L, this.mapPrefabs.border_left);
+        this.prefabMap.set(TileType.BORDER_R, this.mapPrefabs.border_right);
+        this.prefabMap.set(TileType.START_U, this.mapPrefabs.upper_start_obstacle);
+        this.prefabMap.set(TileType.START_B, this.mapPrefabs.below_start_obstacle);
+        this.prefabMap.set(TileType.OBSTACLE, this.mapPrefabs.obstacle);
+        this.prefabMap.set(TileType.OBSTACLE_SIDE, this.mapPrefabs.side_obstacle);
+        this.prefabMap.set(TileType.END_U, this.mapPrefabs.upper_end_obstacle);
+        this.prefabMap.set(TileType.END_B, this.mapPrefabs.below_end_obstacle);
+        this.prefabMap.set(TileType.END_L, this.mapPrefabs.left_end_obstacle);
+        this.prefabMap.set(TileType.END_R, this.mapPrefabs.right_end_obstacle);
 
         this.debug('Prefab map initialized with', this.prefabMap.size, 'entries');
     }
 
+    // ========================================================================
+    // MAP LOADING
+    // ========================================================================
 
+    /**
+     * Load map from JSON and render it
+     */
     private loadAndRenderMap(): void {
         try {
             // Parse JSON
-            const jsonData = this.mapLayoutJson!.json;
+            const jsonData = this.mapLayoutJson.json;
 
             // Validate map data
             if (!this.validateMapData(jsonData)) {
@@ -393,7 +457,13 @@ export class SmartMapGenerator extends Component {
         }
     }
 
+    // ========================================================================
+    // CONTEXT-AWARE DETECTION
+    // ========================================================================
 
+    /**
+     * Get neighbor pattern for a tile (checks 8 surrounding tiles)
+     */
     private getNeighborPattern(x: number, y: number): NeighborPattern {
         const isWall = (checkX: number, checkY: number): boolean => {
             // Out of bounds = treat as wall
@@ -415,12 +485,16 @@ export class SmartMapGenerator extends Component {
         };
     }
 
-
+    /**
+     * Check if position is on the border of the map
+     */
     private isBorderPosition(x: number, y: number): boolean {
         return x === 0 || x === this.mapWidth - 1 || y === 0 || y === this.mapHeight - 1;
     }
 
-
+    /**
+     * Detect tile type based on context (position and neighbors)
+     */
     private detectTileType(x: number, y: number, pattern: NeighborPattern): string {
         // Priority 1: Border detection (position-based)
         if (this.isBorderPosition(x, y)) {
@@ -431,92 +505,20 @@ export class SmartMapGenerator extends Component {
         return this.detectObstacleType(pattern);
     }
 
-
     /**
-     * Check if border tile has inner obstacle neighbor (for start obstacle detection)
+     * Detect border tile type (corners and edges)
      */
-    private hasInnerObstacleNeighbor(x: number, y: number): { 
-        hasObstacle: boolean; 
-        direction: 'top' | 'bottom' | 'left' | 'right' | null 
-    } {
-        const maxX = this.mapWidth - 1;
-        const maxY = this.mapHeight - 1;
-
-        // Check inner neighbor based on border position
-        if (y === 0) {
-            // Top border - check cell below (y+1)
-            if (y + 1 < this.mapHeight && this.mapData[y + 1][x] === TileType.WALL) {
-                return { hasObstacle: true, direction: 'bottom' };
-            }
-        }
-        if (y === maxY) {
-            // Bottom border - check cell above (y-1)
-            if (y - 1 >= 0 && this.mapData[y - 1][x] === TileType.WALL) {
-                return { hasObstacle: true, direction: 'top' };
-            }
-        }
-        if (x === 0) {
-            // Left border - check cell to right (x+1)
-            if (x + 1 < this.mapWidth && this.mapData[y][x + 1] === TileType.WALL) {
-                return { hasObstacle: true, direction: 'right' };
-            }
-        }
-        if (x === maxX) {
-            // Right border - check cell to left (x-1)
-            if (x - 1 >= 0 && this.mapData[y][x - 1] === TileType.WALL) {
-                return { hasObstacle: true, direction: 'left' };
-            }
-        }
-
-        return { hasObstacle: false, direction: null };
-    }
-
     private detectBorderType(x: number, y: number, pattern: NeighborPattern): string {
         const maxX = this.mapWidth - 1;
         const maxY = this.mapHeight - 1;
 
-        // Four corners - corners remain as corners
+        // Four corners
         if (x === 0 && y === 0) return TileType.CORNER_UL;
         if (x === maxX && y === 0) return TileType.CORNER_UR;
         if (x === 0 && y === maxY) return TileType.CORNER_BL;
         if (x === maxX && y === maxY) return TileType.CORNER_BR;
 
-        // Check if this border tile has obstacle neighbor pointing inward
-        const obstacleCheck = this.hasInnerObstacleNeighbor(x, y);
-        
-        if (obstacleCheck.hasObstacle) {
-            // This border connects to an obstacle - spawn start_obstacle instead
-            if (y === 0) {
-                // Top border with obstacle below
-                return TileType.START_U;
-            }
-            if (y === maxY) {
-                // Bottom border with obstacle above
-                return TileType.START_B;
-            }
-            if (x === 0 || x === maxX) {
-                // Left or right border with obstacle
-                // Check if obstacle goes up or down to decide START_U or START_B
-                if (obstacleCheck.direction === 'right' || obstacleCheck.direction === 'left') {
-                    // Check the obstacle's direction by looking at its neighbors
-                    const obstacleX = obstacleCheck.direction === 'right' ? x + 1 : x - 1;
-                    const obstacleY = y;
-                    
-                    // Check if obstacle extends down
-                    if (obstacleY + 1 < this.mapHeight && this.mapData[obstacleY + 1][obstacleX] === TileType.WALL) {
-                        return TileType.START_U; // Obstacle goes down from border
-                    }
-                    // Check if obstacle extends up
-                    if (obstacleY - 1 >= 0 && this.mapData[obstacleY - 1][obstacleX] === TileType.WALL) {
-                        return TileType.START_B; // Obstacle goes up from border
-                    }
-                    // Default to START_U for side borders
-                    return TileType.START_U;
-                }
-            }
-        }
-
-        // Regular border without obstacle neighbor
+        // Four edges
         if (y === 0) return TileType.BORDER_U;
         if (y === maxY) return TileType.BORDER_B;
         if (x === 0) return TileType.BORDER_L;
@@ -527,7 +529,9 @@ export class SmartMapGenerator extends Component {
         return TileType.OBSTACLE;
     }
 
-
+    /**
+     * Detect obstacle tile type (start, middle, end)
+     */
     private detectObstacleType(pattern: NeighborPattern): string {
         const { top, bottom, left, right } = pattern;
 
@@ -560,6 +564,13 @@ export class SmartMapGenerator extends Component {
         return TileType.OBSTACLE;
     }
 
+    // ========================================================================
+    // MAP RENDERING
+    // ========================================================================
+
+    /**
+     * Render the entire map
+     */
     private renderMap(): void {
         if (!this.mapContainer) {
             error('[SmartMapGenerator] Map container is null');
@@ -612,6 +623,9 @@ export class SmartMapGenerator extends Component {
         );
     }
 
+    /**
+     * Spawn a single tile at the specified position
+     */
     private spawnTile(tileType: string, x: number, y: number): boolean {
         // Get prefab for this tile type
         const prefab = this.prefabMap.get(tileType);
@@ -643,7 +657,7 @@ export class SmartMapGenerator extends Component {
             tileNode.setPosition(v3(posX, posY, 0));
 
             // Add to container
-            this.mapContainer!.addChild(tileNode);
+            this.mapContainer.addChild(tileNode);
 
             return true;
 
@@ -653,19 +667,34 @@ export class SmartMapGenerator extends Component {
         }
     }
 
+    // ========================================================================
+    // DEBUG UTILITIES
+    // ========================================================================
+
+    /**
+     * Debug logging (only when debugMode is enabled)
+     */
     private debug(...args: any[]): void {
         if (this.debugMode) {
             log('[SmartMapGenerator]', ...args);
         }
     }
 
+    // ========================================================================
+    // PUBLIC API
+    // ========================================================================
 
+    /**
+     * Reload and re-render the map
+     */
     public reloadMap(): void {
         this.debug('Reloading map...');
         this.loadAndRenderMap();
     }
 
-
+    /**
+     * Clear the map
+     */
     public clearMap(): void {
         if (this.mapContainer) {
             this.mapContainer.destroyAllChildren();
@@ -673,7 +702,9 @@ export class SmartMapGenerator extends Component {
         }
     }
 
-
+    /**
+     * Get map dimensions
+     */
     public getMapSize(): { width: number; height: number } {
         return {
             width: this.mapWidth,
@@ -681,7 +712,9 @@ export class SmartMapGenerator extends Component {
         };
     }
 
-
+    /**
+     * Get tile at position
+     */
     public getTileAt(x: number, y: number): string | null {
         if (y < 0 || y >= this.mapHeight || x < 0 || x >= this.mapWidth) {
             return null;
@@ -690,4 +723,15 @@ export class SmartMapGenerator extends Component {
     }
 }
 
+// ============================================================================
+// BACKWARD COMPATIBILITY ALIAS
+// ============================================================================
 
+/**
+ * Alias for backward compatibility with old code
+ * @deprecated Use SmartMapGenerator instead
+ */
+@ccclass('GenTest')
+export class GenTest extends SmartMapGenerator {
+    // This class is just an alias to maintain compatibility
+}
