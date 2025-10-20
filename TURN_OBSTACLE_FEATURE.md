@@ -8,14 +8,25 @@
 
 ## 📖 Overview
 
-Thêm khả năng detect và render **turn obstacles** (góc rẽ/corner) cho các obstacle có hình dạng không thẳng (L-shape, T-junction, cross, etc.).
+Thêm khả năng detect và render **turn obstacles** (góc rẽ/junction) cho các obstacle có hình dạng phức tạp (T-shape, L-shape, cross, etc.).
 
 ### New Prefabs
-1. **`turn_obstacle_1_direct`** - Corner đơn (2 neighbors: 1 từ nhánh cũ + 1 ra nhánh mới)
-2. **`turn_obstacle_multi_direct`** - Junction phức tạp (3+ neighbors)
+1. **`turn_obstacle_1_direct`** - Junction có 1 nhánh phụ
+   - Bản chất: Nối 3 hướng (T-shape)
+   - Dùng cho: 
+     - Obstacle dài có 1 nhánh phụ ở giữa
+     - Góc rẽ L-corner (2 neighbors)
+   - Default orientation: 1 nhánh dài dọc + 1 nhánh phụ ngang phải
+   
+2. **`turn_obstacle_multi_direct`** - Junction phức tạp (4 hướng)
+   - Cross junction (+ shape)
+   - Nhiều nhánh gặp nhau
 
 ### Default Orientation
-- `turn_obstacle_1_direct`: **Hướng mặc định nối sang bên PHẢI**
+- `turn_obstacle_1_direct`: 
+  - **Nhánh chính: VERTICAL (↑↓)**
+  - **Nhánh phụ: nối sang TRÁI (←)** *(Updated: Prefab thực tế ngược 180° so với assumption ban đầu)*
+  - Visual: ⊣ (T-shape pointing left)
 - Cần rotate dựa trên vị trí thực tế của neighbors
 
 ---
@@ -29,7 +40,8 @@ Thêm khả năng detect và render **turn obstacles** (góc rẽ/corner) cho c�
 const neighbors = [top, bottom, left, right].filter(isObstacle).length;
 
 if (neighbors === 2) {
-    // Check if it's a corner (L-shape) or straight line
+    // L-Corner: 2 hướng
+    // → Use turn_obstacle_1_direct (can represent L-corner)
     if ((top && bottom) || (left && right)) {
         // Straight line → use normal obstacle prefab
     } else {
@@ -37,83 +49,155 @@ if (neighbors === 2) {
     }
 }
 
-if (neighbors >= 3) {
-    // Junction → use turn_obstacle_multi_direct
+if (neighbors === 3) {
+    // T-Junction: 3 hướng (primary use case)
+    // → Use turn_obstacle_1_direct
+}
+
+if (neighbors === 4) {
+    // Cross: 4 hướng
+    // → Use turn_obstacle_multi_direct
 }
 ```
 
 ### Rule 2: Determine Rotation
 
-Cho `turn_obstacle_1_direct` với default hướng **nối sang phải**:
+Cho `turn_obstacle_1_direct` với default:
+- **Nhánh chính: Vertical (↑↓)**
+- **Nhánh phụ: Left (←)** *(Updated: Thực tế prefab)*
+- **Visual: ⊣ (T-shape pointing left)**
 
-| Neighbors | Rotation | Description |
-|-----------|----------|-------------|
-| Top + Right | 0° | Default (↑→) |
-| Right + Bottom | 90° clockwise | (→↓) |
-| Bottom + Left | 180° | (↓←) |
-| Left + Top | 270° clockwise (90° counter) | (←↑) |
+#### For 3 Neighbors (T-Shape) - Primary Case
+
+| Actual Pattern | Top | Right | Bottom | Left | Rotation | Visual | Description |
+|----------------|-----|-------|--------|------|----------|--------|-------------|
+| Bottom-Left-Top | ✓ | ✗ | ✓ | ✓ | 0° | ⊣ | T pointing left (default) |
+| Left-Top-Right | ✓ | ✓ | ✗ | ✓ | 90° | ⊤ | T pointing up |
+| Top-Right-Bottom | ✓ | ✓ | ✓ | ✗ | 180° | ⊢ | T pointing right |
+| Right-Bottom-Left | ✗ | ✓ | ✓ | ✓ | 270° | ⊥ | T pointing down |
+
+#### For 2 Neighbors (L-Corner) - Fallback Case
+
+| Actual Pattern | Top | Right | Bottom | Left | Rotation | Visual | Description |
+|----------------|-----|-------|--------|------|----------|--------|-------------|
+| Bottom-Left | ✗ | ✗ | ✓ | ✓ | 0° | ⊣* | Use left part of T (default) |
+| Left-Top | ✓ | ✗ | ✗ | ✓ | 90° | ⊤* | Use top part of T |
+| Top-Right | ✓ | ✓ | ✗ | ✗ | 180° | ⊢* | Use right part of T |
+| Right-Bottom | ✗ | ✓ | ✓ | ✗ | 270° | ⊥* | Use bottom part of T |
+
+*Note: Chỉ 2 cạnh của T được kết nối, cạnh thứ 3 không có obstacle nhưng prefab vẫn có hình dạng đó (acceptable).
 
 ---
 
 ## 🔍 Detailed Analysis
 
-### Case 1: Simple L-Corner (2 neighbors)
+### Case 1: T-Junction (3 neighbors) - PRIMARY USE
 
 ```
-Pattern 1: Top-Right
-    [ ]
-    [X]→[1]
-    
-Neighbors: top=true, right=true
-Rotation: 0° (default)
-Prefab: turn_obstacle_1_direct
-```
-
-```
-Pattern 2: Right-Bottom
-    
-    [X]→[1]
-    [ ] [1]
-         ↓
-Neighbors: right=true, bottom=true
-Rotation: 90°
-Prefab: turn_obstacle_1_direct
-```
-
-```
-Pattern 3: Bottom-Left
-    
-    [1]←[X]
+Pattern 1: Top-Right-Bottom (T pointing right)
     [1]
     ↓
-Neighbors: bottom=true, left=true
-Rotation: 180°
+    [X]→[1]
+    [1]
+    ↓
+    
+Neighbors: top=true, right=true, bottom=true
+Rotation: 0° (default)
 Prefab: turn_obstacle_1_direct
+Visual: ⊢
 ```
 
 ```
-Pattern 4: Left-Top
+Pattern 2: Right-Bottom-Left (T pointing down)
+    
+    [1]←[X]→[1]
+        [1]
+        ↓
+        
+Neighbors: right=true, bottom=true, left=true
+Rotation: 90°
+Prefab: turn_obstacle_1_direct
+Visual: ⊥
+```
+
+```
+Pattern 3: Bottom-Left-Top (T pointing left)
         [1]
         ↑
     [1]←[X]
+        [1]
+        ↑
+        
+Neighbors: bottom=true, left=true, top=true
+Rotation: 180°
+Prefab: turn_obstacle_1_direct
+Visual: ⊣
+```
+
+```
+Pattern 4: Left-Top-Right (T pointing up)
+        [1]
+        ↑
+    [1]←[X]→[1]
     
-Neighbors: left=true, top=true
+Neighbors: left=true, top=true, right=true
 Rotation: 270° (or -90°)
 Prefab: turn_obstacle_1_direct
+Visual: ⊤
 ```
 
-### Case 2: T-Junction (3 neighbors)
+### Case 2: L-Corner (2 neighbors) - FALLBACK USE
+
+**Note:** `turn_obstacle_1_direct` có 3 cạnh, nhưng chỉ 2 cạnh được kết nối. Cạnh thứ 3 vẫn hiển thị nhưng không có obstacle neighbor.
 
 ```
-Pattern: Top-Right-Bottom (T pointing left)
+Pattern 1: Top-Right (use right part of T)
     [1]
     ↓
-[X]→[1]
+    [X]→[1]
+    
+Neighbors: top=true, right=true
+Rotation: 0°
+Prefab: turn_obstacle_1_direct (bottom part unused)
+Visual: ⊢ (but no bottom neighbor)
+```
+
+```
+Pattern 2: Right-Bottom (use bottom part of T)
+    
+    [X]→[1]
     [1]
     ↓
-Neighbors: top, right, bottom (3)
-Prefab: turn_obstacle_multi_direct
-Rotation: Depends on multi_direct default orientation
+    
+Neighbors: right=true, bottom=true
+Rotation: 90°
+Prefab: turn_obstacle_1_direct (left part unused)
+Visual: ⊥ (but no left neighbor)
+```
+
+```
+Pattern 3: Bottom-Left (use left part of T)
+    
+    [1]←[X]
+    [1]
+    ↓
+    
+Neighbors: bottom=true, left=true
+Rotation: 180°
+Prefab: turn_obstacle_1_direct (top part unused)
+Visual: ⊣ (but no top neighbor)
+```
+
+```
+Pattern 4: Left-Top (use top part of T)
+    [1]
+    ↑
+    [1]←[X]
+    
+Neighbors: left=true, top=true
+Rotation: 270°
+Prefab: turn_obstacle_1_direct (right part unused)
+Visual: ⊤ (but no right neighbor)
 ```
 
 ### Case 3: Cross Junction (4 neighbors)
@@ -129,6 +213,7 @@ Pattern: All 4 directions
 Neighbors: all 4 (top, bottom, left, right)
 Prefab: turn_obstacle_multi_direct
 Rotation: No rotation needed (symmetric)
+Visual: +
 ```
 
 ---
@@ -176,7 +261,7 @@ private setupPrefabMap(): void {
 
 ```typescript
 /**
- * Detect if obstacle is a turn/corner (L-shape)
+ * Detect if obstacle is a turn/junction
  * Returns the tile type and required rotation
  */
 private detectTurnObstacle(pattern: NeighborPattern): {
@@ -194,32 +279,47 @@ private detectTurnObstacle(pattern: NeighborPattern): {
         return { isTurn: false, tileType: '', rotation: 0 };
     }
     
-    // Case 2: L-Corner (2 neighbors, not in line)
-    if (neighbors === 2) {
+    // Case 2: Cross Junction (4 neighbors)
+    if (neighbors === 4) {
+        return {
+            isTurn: true,
+            tileType: TileType.TURN_OBSTACLE_MULTI,
+            rotation: 0 // Symmetric, no rotation needed
+        };
+    }
+    
+    // Case 3: T-Junction (3 neighbors) or L-Corner (2 neighbors)
+    // Both use turn_obstacle_1_direct
+    if (neighbors === 2 || neighbors === 3) {
         let rotation = 0;
         
-        if (top && right) rotation = 0;         // Top-Right: default
-        else if (right && bottom) rotation = 90;  // Right-Bottom
-        else if (bottom && left) rotation = 180;  // Bottom-Left
-        else if (left && top) rotation = 270;     // Left-Top
+        // Determine rotation based on pattern
+        // Default orientation: Vertical (top-bottom) + Left branch (⊣)
+        
+        // Pattern: Bottom + Left + Top (missing right) = Default (0°)
+        if (bottom && left && top) rotation = 0;
+        // Pattern: Bottom + Left (L-corner pointing left-down) = Default (0°)
+        else if (bottom && left && !top && !right) rotation = 0;
+        
+        // Pattern: Left + Top + Right (missing bottom) = 90°
+        else if (left && top && right) rotation = 90;
+        // Pattern: Left + Top (L-corner pointing left-up) = 90°
+        else if (left && top && !bottom && !right) rotation = 90;
+        
+        // Pattern: Top + Right + Bottom (missing left) = 180°
+        else if (top && right && bottom) rotation = 180;
+        // Pattern: Top + Right (L-corner pointing right-up) = 180°
+        else if (top && right && !bottom && !left) rotation = 180;
+        
+        // Pattern: Right + Bottom + Left (missing top) = 270°
+        else if (right && bottom && left) rotation = 270;
+        // Pattern: Right + Bottom (L-corner pointing right-down) = 270°
+        else if (right && bottom && !top && !left) rotation = 270;
         
         return {
             isTurn: true,
             tileType: TileType.TURN_OBSTACLE_1,
             rotation: rotation
-        };
-    }
-    
-    // Case 3: T-Junction or Cross (3+ neighbors)
-    if (neighbors >= 3) {
-        // For multi-direct, rotation depends on prefab design
-        // If prefab is symmetric, no rotation needed
-        // If prefab has specific orientation, calculate based on neighbors
-        
-        return {
-            isTurn: true,
-            tileType: TileType.TURN_OBSTACLE_MULTI,
-            rotation: 0 // TODO: Calculate based on multi_direct design
         };
     }
     
@@ -317,16 +417,17 @@ Priority 1: Border Position
     
 Priority 2: Turn/Corner Detection (NEW!)
     → detectTurnObstacle()
-        Case A: 2 neighbors (L-shape)
-            → turn_obstacle_1_direct + rotation
-        Case B: 3+ neighbors (junction)
-            → turn_obstacle_multi_direct
+        Case A: 4 neighbors (Cross)
+            → turn_obstacle_multi_direct (no rotation)
+        Case B: 3 neighbors (T-junction)
+            → turn_obstacle_1_direct + rotation (PRIMARY)
+        Case C: 2 neighbors (L-corner)
+            → turn_obstacle_1_direct + rotation (FALLBACK)
     
 Priority 3: Regular Obstacle
     → detectObstacleType()
         Case A: 1 neighbor → end_obstacle
         Case B: 2 neighbors (straight) → obstacle/side_obstacle
-        Case C: 3+ neighbors → junction/complex
 ```
 
 ---
@@ -349,8 +450,9 @@ Priority 3: Regular Obstacle
 ```
 
 **Detection:**
+- `[2,0]` = top border + obstacle below → `upper_start_obstacle`
 - `[2,1]` = inner obstacle, neighbors: top(border), bottom(obstacle) → `obstacle` (vertical)
-- `[2,2]` = inner obstacle, neighbors: top(obstacle), right(obstacle) → **`turn_obstacle_1_direct` at 0°** ✓
+- `[2,2]` = inner obstacle, neighbors: top(obstacle), right(obstacle), bottom → **`turn_obstacle_1_direct` at 0°** ✓ (T-junction)
 - `[3,2]` = inner obstacle, neighbors: left(obstacle), right(border) → `right_end_obstacle`
 
 ### Example 2: T-Junction
@@ -369,8 +471,7 @@ Priority 3: Regular Obstacle
 ```
 
 **Detection:**
-- `[2,2]` = neighbors: top(obstacle), bottom(obstacle), left(obstacle), right(border)
-  → **`turn_obstacle_multi_direct`** ✓
+- `[2,2]` = neighbors: top(obstacle), bottom(obstacle), left(obstacle), right(border) → **`turn_obstacle_1_direct` at 180°** ✓ (T-junction pointing left)
 
 ### Example 3: Multiple Corners
 
@@ -389,30 +490,46 @@ Priority 3: Regular Obstacle
 ```
 
 **Detection:**
-- `[2,1]` = top+right → **turn_1_direct at 0°**
-- `[3,1]` = left+bottom → **turn_1_direct at 180°**
-- `[3,2]` = top+bottom → obstacle (straight)
-- `[3,3]` = top+left → **turn_1_direct at 270°**
+- `[2,1]` = top+right+bottom → **turn_1_direct at 0°** (T pointing right)
+- `[3,1]` = left+bottom → **turn_1_direct at 180°** (L-corner, using left part of T)
+- `[3,2]` = top+bottom+right → **turn_1_direct at 270°** (T pointing up)
+- `[3,3]` = top+left+right → **turn_1_direct at 270°** (T pointing up)
 
 ---
 
 ## 🔄 Rotation Matrix
 
-### For turn_obstacle_1_direct (Default: connects to RIGHT)
+### For turn_obstacle_1_direct (Default: Vertical ↑↓ + Right → branch)
 
-| Actual Pattern | Top | Right | Bottom | Left | Rotation | Visual |
-|----------------|-----|-------|--------|------|----------|--------|
-| Top-Right | ✓ | ✓ | ✗ | ✗ | 0° | ┗ |
-| Right-Bottom | ✗ | ✓ | ✓ | ✗ | 90° | ┏ |
-| Bottom-Left | ✗ | ✗ | ✓ | ✓ | 180° | ┓ |
-| Left-Top | ✓ | ✗ | ✗ | ✓ | 270° | ┛ |
+Default visual: **⊢** (T pointing right)
 
-### For turn_obstacle_multi_direct
+#### 3 Neighbors (T-Junction) - PRIMARY USE CASE
 
-Depends on prefab design. Options:
-1. **No rotation** (if symmetric like +)
-2. **Rotate based on missing direction** (if asymmetric like ⊢)
-3. **Multiple variants** for each configuration
+| Actual Pattern | Top | Right | Bottom | Left | Rotation | Visual | Missing Direction |
+|----------------|-----|-------|--------|------|----------|--------|-------------------|
+| Top-Right-Bottom | ✓ | ✓ | ✓ | ✗ | 0° | ⊢ | Left (default) |
+| Right-Bottom-Left | ✗ | ✓ | ✓ | ✓ | 90° | ⊥ | Top |
+| Bottom-Left-Top | ✓ | ✗ | ✓ | ✓ | 180° | ⊣ | Right |
+| Left-Top-Right | ✓ | ✓ | ✗ | ✓ | 270° | ⊤ | Bottom |
+
+#### 2 Neighbors (L-Corner) - FALLBACK USE CASE
+
+**Note:** Prefab vẫn có 3 cạnh, nhưng chỉ 2 cạnh connect với obstacle thực tế.
+
+| Actual Pattern | Top | Right | Bottom | Left | Rotation | Visual | Unused Part |
+|----------------|-----|-------|--------|------|----------|--------|-------------|
+| Top-Right | ✓ | ✓ | ✗ | ✗ | 0° | ⊢ | Bottom part |
+| Right-Bottom | ✗ | ✓ | ✓ | ✗ | 90° | ⊥ | Left part |
+| Bottom-Left | ✗ | ✗ | ✓ | ✓ | 180° | ⊣ | Top part |
+| Left-Top | ✓ | ✗ | ✗ | ✓ | 270° | ⊤ | Right part |
+
+### For turn_obstacle_multi_direct (Cross junction)
+
+Default visual: **+** (symmetric)
+
+| Pattern | Neighbors | Rotation | Notes |
+|---------|-----------|----------|-------|
+| Cross | All 4 | 0° | No rotation needed (symmetric) |
 
 ---
 
@@ -421,34 +538,56 @@ Depends on prefab design. Options:
 ### Before Implementation
 
 1. ✅ `turn_obstacle_1_direct` prefab exists
+   - Visual: T-shape (⊢) - vertical bar + horizontal right branch
 2. ✅ `turn_obstacle_multi_direct` prefab exists
-3. ✅ Default orientation of `turn_obstacle_1_direct` is RIGHT
-4. ❓ Default orientation of `turn_obstacle_multi_direct` is?
+   - Visual: Cross (+) - symmetric 4-way
+3. ✅ Default orientation of `turn_obstacle_1_direct`:
+   - Main branch: Vertical (↑↓)
+   - Side branch: Right (→)
+4. ✅ Understand that `turn_obstacle_1_direct` works for both:
+   - T-junction (3 neighbors) - primary use
+   - L-corner (2 neighbors) - fallback (1 unused arm)
 
 ### After Implementation
 
-1. [ ] All L-corners use `turn_obstacle_1_direct`
-2. [ ] All junctions use `turn_obstacle_multi_direct`
-3. [ ] Rotations are correct (visual test)
-4. [ ] No performance degradation
-5. [ ] Backward compatible (old maps still work)
+1. [ ] All T-junctions use `turn_obstacle_1_direct` (3 neighbors)
+2. [ ] All L-corners use `turn_obstacle_1_direct` (2 neighbors)
+3. [ ] All crosses use `turn_obstacle_multi_direct` (4 neighbors)
+4. [ ] Rotations are correct (visual test)
+5. [ ] Unused arms in L-corners are acceptable visually
+6. [ ] No performance degradation
+7. [ ] Backward compatible (old maps still work)
 
 ---
 
 ## ⚠️ Edge Cases
 
-### Edge Case 1: Corner at Border
+### Edge Case 1: L-Corner with Unused Arm
+
+```
+["1", "1", "1"]
+["1", "0", "1"]
+["1", "1", "1"]
+```
+
+- `[1,1]` = only 2 neighbors (top + right)
+- Uses `turn_obstacle_1_direct` at 0°
+- **Result:** T-shape (⊢) displayed, but bottom arm không connect
+- **Acceptable:** Visual vẫn OK trong game context
+
+### Edge Case 2: Corner at Border
 
 ```
 ["1", "1", "1"]
 ["1", "1", "0"]
 ```
 
-- `[1,1]` = neighbors: top(border), left(border), right
-- Should this be a corner? Or border?
-- **Recommendation:** Treat as border (existing logic)
+- `[1,1]` = neighbors: top(border), left(border), bottom(inner)
+- Should this be a turn?
+- **Recommendation:** Priority to border detection (existing logic)
+- Border detection runs BEFORE turn detection
 
-### Edge Case 2: Diagonal Obstacle
+### Edge Case 3: Single Obstacle
 
 ```
 ["1", "0", "1"]
@@ -457,9 +596,10 @@ Depends on prefab design. Options:
 ```
 
 - Center tile has NO cardinal neighbors
-- **Recommendation:** Isolated tile → use default obstacle
+- Not a turn (0 neighbors)
+- **Recommendation:** Falls to regular obstacle logic (isolated tile)
 
-### Edge Case 3: All 4 Neighbors
+### Edge Case 4: All 4 Neighbors
 
 ```
     [1]
@@ -467,9 +607,10 @@ Depends on prefab design. Options:
     [1]
 ```
 
-- Cross junction
+- Cross junction (4 neighbors)
 - Use `turn_obstacle_multi_direct`
 - No rotation (symmetric)
+- **Clear case, no ambiguity**
 
 ---
 
@@ -479,7 +620,23 @@ Depends on prefab design. Options:
 
 ```typescript
 describe('detectTurnObstacle', () => {
-    test('Top-Right corner returns 0° rotation', () => {
+    test('T-junction Top-Right-Bottom returns 0° rotation', () => {
+        const pattern = { top: true, right: true, bottom: true, left: false };
+        const result = detectTurnObstacle(pattern);
+        expect(result).toEqual({
+            isTurn: true,
+            tileType: 'turn1',
+            rotation: 0
+        });
+    });
+    
+    test('T-junction Right-Bottom-Left returns 90° rotation', () => {
+        const pattern = { top: false, right: true, bottom: true, left: true };
+        const result = detectTurnObstacle(pattern);
+        expect(result.rotation).toBe(90);
+    });
+    
+    test('L-corner Top-Right returns 0° rotation (fallback)', () => {
         const pattern = { top: true, right: true, bottom: false, left: false };
         const result = detectTurnObstacle(pattern);
         expect(result).toEqual({
@@ -489,16 +646,17 @@ describe('detectTurnObstacle', () => {
         });
     });
     
-    test('Right-Bottom corner returns 90° rotation', () => {
-        const pattern = { top: false, right: true, bottom: true, left: false };
-        const result = detectTurnObstacle(pattern);
-        expect(result.rotation).toBe(90);
-    });
-    
-    test('T-junction returns multi_direct', () => {
-        const pattern = { top: true, right: true, bottom: true, left: false };
+    test('Cross junction returns multi_direct', () => {
+        const pattern = { top: true, right: true, bottom: true, left: true };
         const result = detectTurnObstacle(pattern);
         expect(result.tileType).toBe('turn_multi');
+        expect(result.rotation).toBe(0); // Symmetric
+    });
+    
+    test('Straight line is not detected as turn', () => {
+        const pattern = { top: true, right: false, bottom: true, left: false };
+        const result = detectTurnObstacle(pattern);
+        expect(result.isTurn).toBe(false);
     });
 });
 ```
@@ -506,9 +664,10 @@ describe('detectTurnObstacle', () => {
 ### Visual Tests
 
 Create test maps:
-1. **test_turns_simple.json** - Basic L-corners
-2. **test_turns_complex.json** - T-junctions and crosses
-3. **test_turns_all.json** - All rotation angles
+1. **test_turns_t_junction.json** - T-junctions (3 neighbors)
+2. **test_turns_l_corner.json** - L-corners (2 neighbors, fallback)
+3. **test_turns_cross.json** - Cross junctions (4 neighbors)
+4. **test_turns_all.json** - Mixed patterns with all rotation angles
 
 ---
 
@@ -543,17 +702,20 @@ rotationDirection: 'clockwise' | 'counter-clockwise' = 'clockwise';
 1. **README.md**
    - Add turn obstacle section
    - Update prefab count (16 → 18)
+   - Explain T-shape prefab usage
    - Add rotation examples
 
 2. **TESTING_GUIDE.md**
-   - Add turn obstacle test cases
+   - Add turn obstacle test cases (T-junction primary, L-corner fallback)
    - Add rotation verification
+   - Note about unused arms in L-corners
 
 3. **REFACTOR_SUMMARY.md**
    - Document new feature in changelog
 
 4. **QUICK_START.md**
    - Mention optional turn prefabs
+   - Clarify `turn_obstacle_1_direct` is T-shape
 
 ---
 
@@ -593,26 +755,45 @@ rotationDirection: 'clockwise' | 'counter-clockwise' = 'clockwise';
 
 ## 💡 Alternative Approaches
 
-### Approach 1: Multiple Prefab Variants (Current Proposal)
-✅ **Pros:** Single prefab + rotation = flexible  
-❌ **Cons:** Need rotation logic  
+### Approach 1: Single T-Shape Prefab with Rotation (Current Proposal) ✅
+**What we're doing:**
+- 1 prefab: `turn_obstacle_1_direct` (T-shape)
+- Used for BOTH T-junction (3 neighbors) AND L-corner (2 neighbors)
+- L-corners will have 1 unused arm visible
 
-### Approach 2: Separate Prefabs for Each Rotation
+✅ **Pros:** 
+- Minimal prefabs needed (just 2 total)
+- Single prefab + rotation = flexible
+- Unused arm in L-corners might be acceptable visually
+
+❌ **Cons:** 
+- L-corners show extra arm that doesn't connect
+- May look slightly wrong in some contexts
+
+### Approach 2: Separate L and T Prefabs
+**Alternative:**
+- 2 prefabs for 2-neighbor: `l_corner_obstacle` (pure L-shape ┗)
+- 4 prefabs for 3-neighbor: `t_obstacle` (T-shapes ⊢⊥⊣⊤)
+- 1 prefab for 4-neighbor: `cross_obstacle` (+)
+
+✅ **Pros:** Perfect visual for each case  
+❌ **Cons:** Need 7 prefabs instead of 2
+
+### Approach 3: Multiple Prefab Variants
 ```typescript
-turn_obstacle_top_right: Prefab
-turn_obstacle_right_bottom: Prefab
-turn_obstacle_bottom_left: Prefab
-turn_obstacle_left_top: Prefab
+turn_obstacle_top_right: Prefab        // L-corner
+turn_obstacle_right_bottom: Prefab     // L-corner
+turn_obstacle_t_right: Prefab          // T pointing right
+turn_obstacle_t_down: Prefab           // T pointing down
+// ... etc
 ```
-✅ **Pros:** No rotation logic needed  
-❌ **Cons:** 4 prefabs instead of 1, harder to manage  
-
-### Approach 3: Auto-Tiling System
-Use sprite sheets with auto-tiling rules (like Unity's Rule Tiles)
-✅ **Pros:** Most flexible  
-❌ **Cons:** Complex to implement  
+✅ **Pros:** No rotation logic, perfect visuals  
+❌ **Cons:** 8-12 prefabs to manage, complex setup
 
 **Recommendation:** Stick with **Approach 1** (current proposal)
+- Trade-off: Visual accuracy vs. Simplicity
+- Unused arm in L-corners is minor issue
+- User confirms this is acceptable for their map design
 
 ---
 
@@ -663,31 +844,44 @@ const count = Object.values(pattern).filter(Boolean).length;
 ## ✅ Success Criteria
 
 Feature is successful if:
-1. ✅ All L-corners visually correct
-2. ✅ All junctions visually correct
-3. ✅ Rotations accurate (±5° tolerance)
-4. ✅ No performance degradation
-5. ✅ Backward compatible
-6. ✅ Easy to use (no manual config)
-7. ✅ Well documented
+1. ✅ All T-junctions (3 neighbors) visually correct
+2. ✅ All L-corners (2 neighbors) use T-prefab acceptably
+3. ✅ All crosses (4 neighbors) visually correct
+4. ✅ Rotations accurate (±5° tolerance)
+5. ✅ Unused arms in L-corners are acceptable in gameplay
+6. ✅ No performance degradation
+7. ✅ Backward compatible
+8. ✅ Easy to use (no manual config)
+9. ✅ Well documented
 
 ---
 
 ## 🎉 Expected Results
 
-### Before
+### Before (Wrong)
 ```
 [1][1][1][1][1]
 [1][0][1][0][1]
-[1][0][1][1][1]  ← Straight obstacle pieces look wrong at corner
+[1][0][1][1][1]  ← Straight obstacle pieces look wrong at T-junction
+    [1][0][0][1]
 ```
 
-### After
+### After (Correct)
 ```
 [1][1][1][1][1]
 [1][0][1][0][1]
-[1][0][┗━━━━1]  ← Proper corner piece! ✓
+[1][0][⊢──1][1]  ← Proper T-junction piece! ✓
+    [1][0][0][1]
 ```
+
+### L-Corner with T-Prefab (Acceptable)
+```
+[1][1][1][1][1]
+[1][0][⊢][0][1]  ← T-shape used for L-corner
+[1][0][0][0][1]  ← Bottom arm visible but not connected (acceptable)
+```
+
+**Note:** Trong L-corner, prefab T-shape vẫn hiển thị cạnh thứ 3 (unused arm), nhưng điều này được chấp nhận trong game design của bạn.
 
 ---
 
