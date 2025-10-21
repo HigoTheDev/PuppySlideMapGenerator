@@ -43,21 +43,21 @@ MỚI (GenTest2.ts):
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  INPUT:                                                         │
-│  ├─ JSON File (map data: 0 = empty, 1 = wall)                 │
-│  ├─ Cell Prefab (generic tile with Sprite component)           │
-│  └─ Sprites (tile images)                                      │
+│  ├─ JSON File (map data: 0 = empty, 1 = wall)                   │
+│  ├─ Cell Prefab (generic tile with Sprite component)            │
+│  └─ Sprites (tile images)                                       │
 │                                                                 │
 │  PROCESSING:                                                    │
-│  1. Load & Validate JSON                                       │
-│  2. For each "1" in map:                                       │
-│     ├─ Check neighbors (8 directions)                          │
-│     ├─ Detect tile type (corner? border? obstacle?)            │
-│     ├─ Get correct sprite name from mapping                    │
-│     ├─ Calculate rotation needed                               │
-│     └─ Spawn tile with sprite + rotation                       │
+│  1. Load & Validate JSON                                        │
+│  2. For each "1" in map:                                        │
+│     ├─ Check neighbors (8 directions)                           │
+│     ├─ Detect tile type (corner? border? obstacle?)             │
+│     ├─ Get correct sprite name from mapping                     │
+│     ├─ Calculate rotation needed                                │
+│     └─ Spawn tile with sprite + rotation                        │
 │                                                                 │
 │  OUTPUT:                                                        │
-│  └─ Visual map với đúng sprites ở đúng vị trí                  │
+│  └─ Visual map với đúng sprites ở đúng vị trí                   │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
