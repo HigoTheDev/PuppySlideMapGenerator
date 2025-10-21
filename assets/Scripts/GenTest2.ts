@@ -1,0 +1,809 @@
+import { _decorator, Component, Node, Prefab, instantiate, UITransform, v3, JsonAsset, Sprite, SpriteFrame, SpriteAtlas, error, warn, log } from 'cc';
+const { ccclass, property } = _decorator;
+
+enum TileType {
+    EMPTY = '0',
+    WALL = '1',
+    CORNER_UL = 'cul',
+    CORNER_UR = 'cur',
+    CORNER_BL = 'cbl',
+    CORNER_BR = 'cbr',
+    BORDER_U = 'bu',
+    BORDER_B = 'bb',
+    BORDER_L = 'bl',
+    BORDER_R = 'br',
+    START_U = 'su',
+    START_B = 'sb',
+    OBSTACLE = 'o',
+    OBSTACLE_SIDE = 'os',
+    END_U = 'eu',
+    END_B = 'eb',
+    END_L = 'el',
+    END_R = 'er',
+    TURN_OBSTACLE_1 = 'turn1',
+    TURN_OBSTACLE_MULTI = 'turn_multi'
+}
+
+const CONFIG = {
+    MIN_MAP_WIDTH: 3,
+    MIN_MAP_HEIGHT: 3,
+    MAX_MAP_WIDTH: 1000,
+    MAX_MAP_HEIGHT: 1000,
+    DEFAULT_TILE_SIZE: 64,
+    MIN_TILE_SIZE: 8,
+    MAX_TILE_SIZE: 512,
+} as const;
+
+
+const TILE_SPRITE_MAP: Record<string, { sprite: string; rotation: number }> = {
+    // Corners
+    [TileType.CORNER_UL]: { sprite: 'tile040', rotation: 0 },
+    [TileType.CORNER_UR]: { sprite: 'tile028', rotation: 0 },
+    [TileType.CORNER_BL]: { sprite: 'tile028', rotation: 180 },
+    [TileType.CORNER_BR]: { sprite: 'tile040', rotation: 180 },
+    
+    // Borders
+    [TileType.BORDER_U]: { sprite: 'tile041', rotation: 0 },
+    [TileType.BORDER_B]: { sprite: 'tile041', rotation: 180 },
+    [TileType.BORDER_L]: { sprite: 'tile063', rotation: 0 },
+    [TileType.BORDER_R]: { sprite: 'tile062', rotation: 0 },
+    
+    // Obstacles - Start
+    [TileType.START_U]: { sprite: 'tile038', rotation: 0 },
+    [TileType.START_B]: { sprite: 'tile038', rotation: 180 },
+    
+    // Obstacles - Middle
+    [TileType.OBSTACLE]: { sprite: 'path_vertical', rotation: 0 },
+    [TileType.OBSTACLE_SIDE]: { sprite: 'path_vertical', rotation: 90 },
+    
+    // Obstacles - End (all use below_end_obstacle sprite)
+    [TileType.END_U]: { sprite: 'below_end_obstacle', rotation: 180 },
+    [TileType.END_B]: { sprite: 'below_end_obstacle', rotation: 0 },
+    [TileType.END_L]: { sprite: 'below_end_obstacle', rotation: 90 },
+    [TileType.END_R]: { sprite: 'below_end_obstacle', rotation: 270 },
+    
+    // Turns
+    [TileType.TURN_OBSTACLE_1]: { sprite: 'tile063', rotation: 0 },
+    [TileType.TURN_OBSTACLE_MULTI]: { sprite: 'tile058', rotation: 0 },
+};
+
+
+interface NeighborPattern {
+    top: boolean;
+    bottom: boolean;
+    left: boolean;
+    right: boolean;
+    topLeft: boolean;
+    topRight: boolean;
+    bottomLeft: boolean;
+    bottomRight: boolean;
+}
+
+interface MapData {
+    data: string[][];
+    version?: string;
+    name?: string;
+    tileSize?: number;
+}
+
+interface SpriteConfig {
+    sprite: string;
+    rotation: number;
+}
+
+@ccclass('SmartMapGenerator2')
+export class SmartMapGenerator2 extends Component {
+    // ========================================================================
+    // PROPERTIES
+    // ========================================================================
+
+    @property({
+        type: Prefab,
+        tooltip: "Generic cell prefab (chứa Sprite component)"
+    })
+    cellPrefab: Prefab | null = null;
+
+    @property({
+        type: SpriteAtlas,
+        tooltip: "Atlas chứa tất cả tile sprites"
+    })
+    tileAtlas: SpriteAtlas | null = null;
+
+    @property({
+        type: [SpriteFrame],
+        tooltip: "Individual sprite frames (fallback nếu không dùng atlas)"
+    })
+    tileSprites: SpriteFrame[] = [];
+
+    @property({
+        type: JsonAsset,
+        tooltip: "File JSON chứa dữ liệu map (format: {data: string[][]})"
+    })
+    mapLayoutJson: JsonAsset | null = null;
+
+    @property({
+        type: Node,
+        tooltip: "Node container chứa tất cả các tiles"
+    })
+    mapContainer: Node | null = null;
+
+    @property({
+        tooltip: "Kích thước mỗi tile (pixel)",
+        range: [CONFIG.MIN_TILE_SIZE, CONFIG.MAX_TILE_SIZE]
+    })
+    tileSize: number = CONFIG.DEFAULT_TILE_SIZE;
+
+    @property({
+        tooltip: "Bật chế độ context-aware (tự động detect tile type)",
+        visible: true
+    })
+    useContextAwareDetection: boolean = true;
+
+    @property({
+        tooltip: "Bật debug mode để xem log chi tiết",
+        visible: true
+    })
+    debugMode: boolean = false;
+
+    // ========================================================================
+    // PRIVATE FIELDS
+    // ========================================================================
+
+    private mapData: string[][] = [];
+    private mapWidth: number = 0;
+    private mapHeight: number = 0;
+    private tileRotations: Map<string, number> = new Map();
+
+    // ========================================================================
+    // LIFECYCLE
+    // ========================================================================
+
+    onLoad() {
+        this.debug('Component loaded');
+    }
+
+    start() {
+        try {
+            const startTime = performance.now();
+
+            // Validate setup
+            if (!this.validateSetup()) {
+                this.enabled = false;
+                return;
+            }
+
+            // Load and render map
+            this.loadAndRenderMap();
+
+            const endTime = performance.now();
+            this.debug(`Map initialized in ${(endTime - startTime).toFixed(2)}ms`);
+        } catch (err) {
+            error('[SmartMapGenerator2] Fatal error in start():', err);
+            this.enabled = false;
+        }
+    }
+
+    // ========================================================================
+    // VALIDATION
+    // ========================================================================
+
+    private validateSetup(): boolean {
+        // Check map container
+        if (!this.mapContainer) {
+            error('[SmartMapGenerator2] Map container is not assigned!');
+            return false;
+        }
+
+        // Check JSON asset
+        if (!this.mapLayoutJson) {
+            error('[SmartMapGenerator2] Map layout JSON is not assigned!');
+            return false;
+        }
+
+        // Check cell prefab
+        if (!this.cellPrefab) {
+            error('[SmartMapGenerator2] Cell prefab is not assigned!');
+            return false;
+        }
+
+        // Check sprite atlas or sprite array
+        if (!this.tileAtlas && this.tileSprites.length === 0) {
+            error('[SmartMapGenerator2] No tile atlas or sprites assigned!');
+            return false;
+        }
+
+        // Check tile size
+        if (this.tileSize < CONFIG.MIN_TILE_SIZE || this.tileSize > CONFIG.MAX_TILE_SIZE) {
+            warn(`[SmartMapGenerator2] Tile size ${this.tileSize} is out of range. Adjusting to ${CONFIG.DEFAULT_TILE_SIZE}`);
+            this.tileSize = CONFIG.DEFAULT_TILE_SIZE;
+        }
+
+        return true;
+    }
+
+    private validateMapData(data: any): data is MapData {
+        // Check if data exists
+        if (!data) {
+            error('[SmartMapGenerator2] Map data is null or undefined');
+            return false;
+        }
+
+        // Check if data.data exists and is array
+        if (!Array.isArray(data.data)) {
+            error('[SmartMapGenerator2] Map data.data is not an array');
+            return false;
+        }
+
+        // Check if map is empty
+        if (data.data.length === 0) {
+            error('[SmartMapGenerator2] Map data is empty');
+            return false;
+        }
+
+        // Check minimum size
+        if (data.data.length < CONFIG.MIN_MAP_HEIGHT) {
+            error(`[SmartMapGenerator2] Map height ${data.data.length} is less than minimum ${CONFIG.MIN_MAP_HEIGHT}`);
+            return false;
+        }
+
+        // Check maximum size
+        if (data.data.length > CONFIG.MAX_MAP_HEIGHT) {
+            error(`[SmartMapGenerator2] Map height ${data.data.length} exceeds maximum ${CONFIG.MAX_MAP_HEIGHT}`);
+            return false;
+        }
+
+        // Validate each row
+        const firstRowLength = data.data[0].length;
+
+        if (firstRowLength < CONFIG.MIN_MAP_WIDTH) {
+            error(`[SmartMapGenerator2] Map width ${firstRowLength} is less than minimum ${CONFIG.MIN_MAP_WIDTH}`);
+            return false;
+        }
+
+        if (firstRowLength > CONFIG.MAX_MAP_WIDTH) {
+            error(`[SmartMapGenerator2] Map width ${firstRowLength} exceeds maximum ${CONFIG.MAX_MAP_WIDTH}`);
+            return false;
+        }
+
+        for (let i = 0; i < data.data.length; i++) {
+            const row = data.data[i];
+
+            // Check if row is array
+            if (!Array.isArray(row)) {
+                error(`[SmartMapGenerator2] Row ${i} is not an array`);
+                return false;
+            }
+
+            // Check if all rows have same length
+            if (row.length !== firstRowLength) {
+                error(`[SmartMapGenerator2] Row ${i} has inconsistent length. Expected ${firstRowLength}, got ${row.length}`);
+                return false;
+            }
+
+            // Validate each cell
+            for (let j = 0; j < row.length; j++) {
+                const cell = row[j];
+
+                // Check if cell is string
+                if (typeof cell !== 'string') {
+                    error(`[SmartMapGenerator2] Cell [${i}][${j}] is not a string. Got ${typeof cell}`);
+                    return false;
+                }
+
+                // In context-aware mode, only allow '0' and '1'
+                if (this.useContextAwareDetection) {
+                    if (cell !== TileType.EMPTY && cell !== TileType.WALL) {
+                        error(`[SmartMapGenerator2] Cell [${i}][${j}] has invalid value '${cell}' in context-aware mode. Only '0' and '1' are allowed.`);
+                        return false;
+                    }
+                }
+            }
+        }
+
+        this.debug(`Map data validated: ${data.data.length}x${firstRowLength}`);
+        return true;
+    }
+
+    // ========================================================================
+    // MAP LOADING
+    // ========================================================================
+
+    private loadAndRenderMap(): void {
+        try {
+            // Parse JSON
+            const jsonData = this.mapLayoutJson!.json;
+
+            // Validate map data
+            if (!this.validateMapData(jsonData)) {
+                error('[SmartMapGenerator2] Map validation failed');
+                return;
+            }
+
+            // Store map data
+            this.mapData = jsonData.data;
+            this.mapHeight = this.mapData.length;
+            this.mapWidth = this.mapData[0].length;
+
+            // Override tile size if specified in JSON
+            if (jsonData.tileSize && typeof jsonData.tileSize === 'number') {
+                this.tileSize = jsonData.tileSize;
+                this.debug(`Tile size overridden from JSON: ${this.tileSize}`);
+            }
+
+            // Log map info
+            this.debug(`Loaded map: ${this.mapWidth}x${this.mapHeight}, tile size: ${this.tileSize}px`);
+            if (jsonData.name) {
+                this.debug(`Map name: ${jsonData.name}`);
+            }
+            if (jsonData.version) {
+                this.debug(`Map version: ${jsonData.version}`);
+            }
+
+            // Render map
+            this.renderMap();
+
+        } catch (err) {
+            error('[SmartMapGenerator2] Error loading map:', err);
+        }
+    }
+
+    // ========================================================================
+    // SPRITE LOADING
+    // ========================================================================
+
+    private getSpriteFrame(spriteName: string): SpriteFrame | null {
+        if (!spriteName) {
+            warn('[SmartMapGenerator2] Sprite name is empty');
+            return null;
+        }
+
+        // Try to get from atlas first
+        if (this.tileAtlas) {
+            const spriteFrame = this.tileAtlas.getSpriteFrame(spriteName);
+            if (spriteFrame) {
+                return spriteFrame;
+            }
+            this.debug(`Sprite '${spriteName}' not found in atlas, trying fallback...`);
+        }
+
+        // Fallback: Try individual sprites array
+        if (this.tileSprites.length > 0) {
+            // Match by sprite frame name
+            const found = this.tileSprites.find(sf => sf && sf.name === spriteName);
+            if (found) {
+                this.debug(`Sprite '${spriteName}' loaded from sprites array`);
+                return found;
+            }
+        }
+
+        warn(`[SmartMapGenerator2] Sprite '${spriteName}' not found anywhere!`);
+        return null;
+    }
+
+    private getSpriteConfig(tileType: string): SpriteConfig | null {
+        const config = TILE_SPRITE_MAP[tileType];
+        if (!config) {
+            warn(`[SmartMapGenerator2] No sprite mapping for tile type '${tileType}'`);
+            return null;
+        }
+        return config;
+    }
+
+    // ========================================================================
+    // NEIGHBOR DETECTION (from GenTest.ts)
+    // ========================================================================
+
+    private getNeighborPattern(x: number, y: number): NeighborPattern {
+        const isWall = (checkX: number, checkY: number): boolean => {
+            // Out of bounds = treat as wall
+            if (checkY < 0 || checkY >= this.mapHeight || checkX < 0 || checkX >= this.mapWidth) {
+                return true;
+            }
+            return this.mapData[checkY][checkX] === TileType.WALL;
+        };
+
+        return {
+            top: isWall(x, y - 1),
+            bottom: isWall(x, y + 1),
+            left: isWall(x - 1, y),
+            right: isWall(x + 1, y),
+            topLeft: isWall(x - 1, y - 1),
+            topRight: isWall(x + 1, y - 1),
+            bottomLeft: isWall(x - 1, y + 1),
+            bottomRight: isWall(x + 1, y + 1),
+        };
+    }
+
+    private isBorderPosition(x: number, y: number): boolean {
+        return x === 0 || x === this.mapWidth - 1 || y === 0 || y === this.mapHeight - 1;
+    }
+
+    private isWallAt(x: number, y: number): boolean {
+        if (x < 0 || x >= this.mapWidth || y < 0 || y >= this.mapHeight) {
+            return false; // OOB = not a wall for inner neighbor check
+        }
+        return this.mapData[y][x] === TileType.WALL;
+    }
+
+    // ========================================================================
+    // TILE TYPE DETECTION (from GenTest.ts)
+    // ========================================================================
+
+    private detectTileType(x: number, y: number, pattern: NeighborPattern): string {
+        // Priority 1: Border detection (position-based)
+        if (this.isBorderPosition(x, y)) {
+            return this.detectBorderType(x, y, pattern);
+        }
+
+        // Priority 2: Obstacle detection (pattern-based)
+        return this.detectObstacleType(pattern, x, y);
+    }
+
+    /**
+     * Check if border tile has inner obstacle neighbor
+     */
+    private hasInnerObstacleNeighbor(x: number, y: number): {
+        hasObstacle: boolean;
+        direction: 'top' | 'bottom' | 'left' | 'right' | null
+    } {
+        const maxX = this.mapWidth - 1;
+        const maxY = this.mapHeight - 1;
+
+        // Check inner neighbor based on border position
+        if (y === 0) {
+            // Top border - check cell below (y+1)
+            if (y + 1 < this.mapHeight && this.mapData[y + 1][x] === TileType.WALL) {
+                return { hasObstacle: true, direction: 'bottom' };
+            }
+        }
+        if (y === maxY) {
+            // Bottom border - check cell above (y-1)
+            if (y - 1 >= 0 && this.mapData[y - 1][x] === TileType.WALL) {
+                return { hasObstacle: true, direction: 'top' };
+            }
+        }
+        if (x === 0) {
+            // Left border - check cell to right (x+1)
+            if (x + 1 < this.mapWidth && this.mapData[y][x + 1] === TileType.WALL) {
+                return { hasObstacle: true, direction: 'right' };
+            }
+        }
+        if (x === maxX) {
+            // Right border - check cell to left (x-1)
+            if (x - 1 >= 0 && this.mapData[y][x - 1] === TileType.WALL) {
+                return { hasObstacle: true, direction: 'left' };
+            }
+        }
+
+        return { hasObstacle: false, direction: null };
+    }
+
+    private detectBorderType(x: number, y: number, pattern: NeighborPattern): string {
+        const maxX = this.mapWidth - 1;
+        const maxY = this.mapHeight - 1;
+
+        // Four corners - corners remain as corners
+        if (x === 0 && y === 0) return TileType.CORNER_UL;
+        if (x === maxX && y === 0) return TileType.CORNER_UR;
+        if (x === 0 && y === maxY) return TileType.CORNER_BL;
+        if (x === maxX && y === maxY) return TileType.CORNER_BR;
+
+        // Check if this border tile has obstacle neighbor pointing inward
+        const obstacleCheck = this.hasInnerObstacleNeighbor(x, y);
+
+        if (obstacleCheck.hasObstacle) {
+            // This border connects to an obstacle
+            if (y === 0) {
+                // Top border with obstacle below
+                return TileType.START_U;
+            }
+            if (y === maxY) {
+                // Bottom border with obstacle above
+                return TileType.START_B;
+            }
+            if (x === 0 || x === maxX) {
+                // Side borders with obstacle → use multi-direct turn
+                return TileType.TURN_OBSTACLE_MULTI;
+            }
+        }
+
+        // Regular border without obstacle neighbor
+        if (y === 0) return TileType.BORDER_U;
+        if (y === maxY) return TileType.BORDER_B;
+        if (x === 0) return TileType.BORDER_L;
+        if (x === maxX) return TileType.BORDER_R;
+
+        // Fallback (should never reach here)
+        warn(`[SmartMapGenerator2] Unexpected border case at [${x}, ${y}]`);
+        return TileType.OBSTACLE;
+    }
+
+    private detectObstacleType(pattern: NeighborPattern, x: number, y: number): string {
+        const { top, bottom, left, right } = pattern;
+
+        // Count obstacle neighbors
+        const neighbors = [top, bottom, left, right].filter(Boolean).length;
+
+        // Isolated obstacle (0 neighbors)
+        if (neighbors === 0) {
+            return TileType.TURN_OBSTACLE_MULTI;
+        }
+
+        // Check for turn obstacles (2, 3, or 4 neighbors)
+        const turnCheck = this.detectTurnObstacle(pattern);
+        if (turnCheck.isTurn) {
+            // Store rotation info for later use in spawnTile()
+            this.tileRotations.set(`${x},${y}`, turnCheck.rotation);
+            return turnCheck.tileType;
+        }
+
+        // Single neighbor = End tile
+        if (neighbors === 1) {
+            if (top) return TileType.END_B;    // End pointing down
+            if (bottom) return TileType.END_U; // End pointing up
+            if (left) return TileType.END_R;   // End pointing right
+            if (right) return TileType.END_L;  // End pointing left
+        }
+
+        // Two neighbors = Middle tile
+        if (neighbors === 2) {
+            // Vertical (top-bottom)
+            if (top && bottom) return TileType.OBSTACLE;
+
+            // Horizontal (left-right)
+            if (left && right) return TileType.OBSTACLE_SIDE;
+
+            // L-shape or corner - use vertical as default
+            return TileType.OBSTACLE;
+        }
+
+        // Three or more neighbors = Junction/complex
+        return TileType.OBSTACLE;
+    }
+
+    /**
+     * Detect turn obstacles (L-corners, T-junctions, crosses)
+     * KEEP ORIGINAL LOGIC FROM GenTest.ts
+     */
+    private detectTurnObstacle(pattern: NeighborPattern): {
+        isTurn: boolean;
+        tileType: string;
+        rotation: number; // degrees
+    } {
+        const { top, bottom, left, right } = pattern;
+
+        // Count obstacle neighbors
+        const neighbors = [top, bottom, left, right].filter(Boolean).length;
+
+        // Case 1: Straight line (not a turn)
+        if (neighbors === 2 && ((top && bottom) || (left && right))) {
+            return { isTurn: false, tileType: '', rotation: 0 };
+        }
+
+        // Case 2: Cross Junction (4 neighbors)
+        if (neighbors === 4) {
+            return {
+                isTurn: true,
+                tileType: TileType.TURN_OBSTACLE_MULTI,
+                rotation: 0 // Symmetric, no rotation needed
+            };
+        }
+
+        // Case 3: T-Junction (3 neighbors) or L-Corner (2 neighbors)
+        // Both use turn_obstacle_1_direct
+        if (neighbors === 2 || neighbors === 3) {
+            let rotation = 0;
+
+            if (top && right && bottom) rotation = 180;
+            else if (top && right && !bottom && !left) rotation = 180;
+            else if (right && bottom && left) rotation = 270;
+            else if (right && bottom && !top && !left) rotation = 270;
+            else if (bottom && left && top) rotation = 0;
+            else if (bottom && left && !top && !right) rotation = 0;
+            else if (left && top && right) rotation = 90;
+            else if (left && top && !bottom && !right) rotation = 90;
+
+            return {
+                isTurn: true,
+                tileType: TileType.TURN_OBSTACLE_1,
+                rotation: rotation
+            };
+        }
+
+        return { isTurn: false, tileType: '', rotation: 0 };
+    }
+
+    // ========================================================================
+    // MAP RENDERING
+    // ========================================================================
+
+    private renderMap(): void {
+        if (!this.mapContainer) {
+            error('[SmartMapGenerator2] Map container is null');
+            return;
+        }
+
+        // Clear existing tiles
+        this.mapContainer.destroyAllChildren();
+
+        const startTime = performance.now();
+        let tilesRendered = 0;
+        let tilesSkipped = 0;
+
+        // Iterate through each tile
+        for (let y = 0; y < this.mapHeight; y++) {
+            for (let x = 0; x < this.mapWidth; x++) {
+                const tileValue = this.mapData[y][x];
+
+                // Skip empty tiles
+                if (tileValue === TileType.EMPTY) {
+                    tilesSkipped++;
+                    continue;
+                }
+
+                // Determine tile type
+                let tileType: string;
+
+                if (this.useContextAwareDetection && tileValue === TileType.WALL) {
+                    // Context-aware mode: auto-detect tile type
+                    const pattern = this.getNeighborPattern(x, y);
+                    tileType = this.detectTileType(x, y, pattern);
+                } else {
+                    // Legacy mode: use tile value directly
+                    tileType = tileValue;
+                }
+
+                // Spawn tile
+                if (this.spawnTile(tileType, x, y)) {
+                    tilesRendered++;
+                } else {
+                    tilesSkipped++;
+                }
+            }
+        }
+
+        const endTime = performance.now();
+        this.debug(
+            `Map rendered: ${tilesRendered} tiles in ${(endTime - startTime).toFixed(2)}ms ` +
+            `(${tilesSkipped} skipped)`
+        );
+    }
+
+    /**
+     * Spawn a single tile using dynamic sprite system
+     */
+    private spawnTile(tileType: string, x: number, y: number): boolean {
+        // Validate generic prefab exists
+        if (!this.cellPrefab) {
+            error('[SmartMapGenerator2] Cell prefab is not assigned!');
+            return false;
+        }
+
+        try {
+            // 1. Instantiate generic cell prefab
+            const tileNode = instantiate(this.cellPrefab);
+            
+            // 2. Get sprite component
+            const sprite = tileNode.getComponent(Sprite);
+            if (!sprite) {
+                error('[SmartMapGenerator2] Cell prefab missing Sprite component!');
+                tileNode.destroy();
+                return false;
+            }
+            
+            // 3. Get sprite configuration from mapping
+            const spriteConfig = this.getSpriteConfig(tileType);
+            if (!spriteConfig) {
+                warn(`[SmartMapGenerator2] No sprite config for tile type '${tileType}' at [${x}, ${y}]`);
+                tileNode.destroy();
+                return false;
+            }
+            
+            // 4. Load sprite frame
+            const spriteFrame = this.getSpriteFrame(spriteConfig.sprite);
+            if (!spriteFrame) {
+                warn(`[SmartMapGenerator2] Could not load sprite '${spriteConfig.sprite}' at [${x}, ${y}]`);
+                tileNode.destroy();
+                return false;
+            }
+            
+            // 5. Assign sprite
+            sprite.spriteFrame = spriteFrame;
+            
+            // 6. Set size
+            const transform = tileNode.getComponent(UITransform);
+            if (transform) {
+                transform.setContentSize(this.tileSize, this.tileSize);
+            }
+            
+            // 7. Calculate total rotation
+            let totalRotation = 0;
+            
+            // Base rotation from sprite configuration (from TILEINFO)
+            totalRotation += spriteConfig.rotation;
+            
+            // Dynamic rotation from turn obstacles
+            const rotationKey = `${x},${y}`;
+            if (this.tileRotations.has(rotationKey)) {
+                const dynamicRotation = this.tileRotations.get(rotationKey)!;
+                totalRotation += dynamicRotation;
+                this.tileRotations.delete(rotationKey); // Clean up
+            }
+            
+            // 8. Apply rotation if needed
+            if (totalRotation !== 0) {
+                tileNode.setRotationFromEuler(0, 0, -totalRotation); // Negative for clockwise
+            }
+            
+            // 9. Calculate position
+            const anchorX = this.mapWidth * this.tileSize / 2;
+            const anchorY = this.mapHeight * this.tileSize / 2;
+            const posX = x * this.tileSize - anchorX + this.tileSize / 2;
+            const posY = -y * this.tileSize + anchorY - this.tileSize / 2;
+            
+            tileNode.setPosition(v3(posX, posY, 0));
+            
+            // 10. Add to container
+            this.mapContainer!.addChild(tileNode);
+            
+            this.debug(`Spawned '${spriteConfig.sprite}' (${tileType}) at [${x},${y}] with rotation ${totalRotation}°`);
+            return true;
+            
+        } catch (err) {
+            error(`[SmartMapGenerator2] Error spawning tile at [${x}, ${y}]:`, err);
+            return false;
+        }
+    }
+
+    // ========================================================================
+    // PUBLIC API (from GenTest.ts)
+    // ========================================================================
+
+    /**
+     * Reload and re-render the map
+     */
+    public reloadMap(): void {
+        this.debug('Reloading map...');
+        this.loadAndRenderMap();
+    }
+
+    /**
+     * Clear all tiles from the map
+     */
+    public clearMap(): void {
+        if (this.mapContainer) {
+            this.mapContainer.destroyAllChildren();
+            this.debug('Map cleared');
+        }
+    }
+
+    /**
+     * Get map dimensions
+     */
+    public getMapSize(): { width: number; height: number } {
+        return {
+            width: this.mapWidth,
+            height: this.mapHeight
+        };
+    }
+
+    /**
+     * Get tile value at position
+     */
+    public getTileAt(x: number, y: number): string | null {
+        if (y < 0 || y >= this.mapHeight || x < 0 || x >= this.mapWidth) {
+            return null;
+        }
+        return this.mapData[y][x];
+    }
+
+    // ========================================================================
+    // DEBUG UTILITIES
+    // ========================================================================
+
+    private debug(...args: any[]): void {
+        if (this.debugMode) {
+            log('[SmartMapGenerator2]', ...args);
+        }
+    }
+}

@@ -1,0 +1,19 @@
+﻿tên prefab (cũ)    |   tên tile được sử dụng  |  góc xoay
+below_end_obstacle      below_end_obstacle           0
+below_left_corner:             tile028,             180
+below_right_corner:            tile040,             180
+below_start_obstacle:          tile038,             180
+border_below:                  tile041,             180
+border_left:                   tile063,              0
+border_right:                  tile062,              0
+border_upper:                  tile041,              0
+left_end_obstacle:       below_end_obstacle ,       270
+obstacle:                   path_vertical,           0
+right_end_obstacle:      below_end_obstacle,        90
+side_obstacle:              path_vertical,          90
+turn_obstacle_1_direct:        tile063,            180
+turn_obstacle_multi_direct:    tile058,              0
+upper_end_obstacle:      below_end_obstacle,       180
+upper_left_corner:             tile040,              0
+upper_right_corner:            tile028,              0
+upper_start_obstacle:          tile038,              0
