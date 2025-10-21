@@ -526,7 +526,6 @@ export class SmartMapGenerator extends Component {
         const { top, bottom, left, right } = pattern;
         const turnCheck = this.detectTurnObstacle(pattern);
         if (turnCheck.isTurn) {
-            // Store rotation info for later use in spawnTile()
             this.tileRotations.set(`${x},${y}`, turnCheck.rotation);
             return turnCheck.tileType;
         }
@@ -558,8 +557,6 @@ export class SmartMapGenerator extends Component {
             return TileType.OBSTACLE;
         }
 
-        // Three or more neighbors = Junction/complex
-        // Default to vertical obstacle
         return TileType.OBSTACLE;
     }
 
@@ -718,31 +715,16 @@ export class SmartMapGenerator extends Component {
         }
 
         // Case 3: T-Junction (3 neighbors) or L-Corner (2 neighbors)
-        // Both use turn_obstacle_1_direct
         if (neighbors === 2 || neighbors === 3) {
             let rotation = 0;
 
-            // Determine rotation based on which neighbor is MISSING or least important
-            // Default orientation: Vertical (top-bottom) + Right branch
-
-            // Pattern: Top + Right + Bottom (missing left) = Default (0°)
             if (top && right && bottom) rotation = 180;
-            // Pattern: Top + Right (L-corner pointing right-up) = Default (0°)
             else if (top && right && !bottom && !left) rotation = 180;
-
-            // Pattern: Right + Bottom + Left (missing top) = 90°
             else if (right && bottom && left) rotation = 270;
-            // Pattern: Right + Bottom (L-corner pointing right-down) = 90°
             else if (right && bottom && !top && !left) rotation = 270;
-
-            // Pattern: Bottom + Left + Top (missing right) = 180°
             else if (bottom && left && top) rotation = 0;
-            // Pattern: Bottom + Left (L-corner pointing left-down) = 180°
             else if (bottom && left && !top && !right) rotation = 0;
-
-            // Pattern: Left + Top + Right (missing bottom) = 270°
             else if (left && top && right) rotation = 90;
-            // Pattern: Left + Top (L-corner pointing left-up) = 270°
             else if (left && top && !bottom && !right) rotation = 90;
 
             return {
