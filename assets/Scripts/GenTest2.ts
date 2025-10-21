@@ -14,8 +14,11 @@ enum TileType {
     BORDER_R = 'br',
     START_U = 'su',
     START_B = 'sb',
+    START_L = 'sl',
+    START_R = 'sr',
     OBSTACLE = 'o',
-    OBSTACLE_SIDE = 'os',
+    OBSTACLE_L = 'ol',
+    OBSTACLE_R = 'or',
     END_U = 'eu',
     END_B = 'eb',
     END_L = 'el',
@@ -51,16 +54,19 @@ const TILE_SPRITE_MAP: Record<string, { sprite: string; rotation: number }> = {
     // Obstacles - Start
     [TileType.START_U]: { sprite: 'tile038', rotation: 0 },
     [TileType.START_B]: { sprite: 'tile024', rotation: 0 },
+    [TileType.START_L]: { sprite: 'tile020', rotation: 0 },
+    [TileType.START_R]: { sprite: 'tile028', rotation: 0 },
     
     // Obstacles - Middle
     [TileType.OBSTACLE]: { sprite: 'path_vertical', rotation: 0 },
-    [TileType.OBSTACLE_SIDE]: { sprite: 'path_vertical', rotation: 90 },
+    [TileType.OBSTACLE_L]: { sprite: 'tile017', rotation: 0 },
+    [TileType.OBSTACLE_R]: { sprite: 'tile017', rotation: 0 },
     
     // Obstacles - End (all use below_end_obstacle sprite)
     [TileType.END_U]: { sprite: 'tile003', rotation: 0 },
     [TileType.END_B]: { sprite: 'below_end_obstacle', rotation: 0 },
-    [TileType.END_L]: { sprite: 'below_end_obstacle', rotation: 90 },
-    [TileType.END_R]: { sprite: 'below_end_obstacle', rotation: 270 },
+    [TileType.END_L]: { sprite: 'tile016', rotation: 0 },
+    [TileType.END_R]: { sprite: 'tile018', rotation: 0 },
     
     // Turns
     [TileType.TURN_OBSTACLE_1]: { sprite: 'tile063', rotation: 0 },
@@ -521,9 +527,13 @@ export class SmartMapGenerator2 extends Component {
                 // Bottom border with obstacle above
                 return TileType.START_B;
             }
-            if (x === 0 || x === maxX) {
-                // Side borders with obstacle → use multi-direct turn
-                return TileType.TURN_OBSTACLE_MULTI;
+            if (x === 0) {
+                // Left border with obstacle to the right
+                return TileType.START_L;
+            }
+            if (x === maxX) {
+                // Right border with obstacle to the left
+                return TileType.START_R;
             }
         }
 
@@ -568,10 +578,25 @@ export class SmartMapGenerator2 extends Component {
         // Two neighbors = Middle tile
         if (neighbors === 2) {
             // Vertical (top-bottom)
-            if (top && bottom) return TileType.OBSTACLE;
+            if (top && bottom) {
+                // Always use regular OBSTACLE for vertical
+                return TileType.OBSTACLE;
+            }
 
-            // Horizontal (left-right)
-            if (left && right) return TileType.OBSTACLE_SIDE;
+            // Horizontal (left-right) - Check position to determine L or R
+            if (left && right) {
+                // Check if obstacle is at left or right edge (next to border)
+                if (x === 1) {
+                    // Obstacle next to left border
+                    return TileType.OBSTACLE_L;
+                }
+                if (x === this.mapWidth - 2) {
+                    // Obstacle next to right border
+                    return TileType.OBSTACLE_R;
+                }
+                // Default to left obstacle for center positions
+                return TileType.OBSTACLE_L;
+            }
 
             // L-shape or corner - use vertical as default
             return TileType.OBSTACLE;
