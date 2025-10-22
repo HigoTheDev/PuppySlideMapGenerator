@@ -4,26 +4,32 @@ const { ccclass, property } = _decorator;
 enum TileType {
     EMPTY = '0',
     WALL = '1',
-    CORNER_UL = 'cul',
-    CORNER_UR = 'cur',
-    CORNER_BL = 'cbl',
-    CORNER_BR = 'cbr',
-    BORDER_U = 'bu',
-    BORDER_B = 'bb',
+    CORNER_UL = 'cbl',
+    CORNER_UR = 'cbr',
+    CORNER_BL = 'cul',
+    CORNER_BR = 'cur',
+    BORDER_U = 'bb',
+    BORDER_B = 'bu',
     BORDER_L = 'bl',
     BORDER_R = 'br',
-    START_U = 'su',
-    START_B = 'sb',
+    START_U = 'sb',
+    START_B = 'su',
     START_L = 'sl',
     START_R = 'sr',
     OBSTACLE = 'o',
     OBSTACLE_L = 'ol',
     OBSTACLE_R = 'or',
-    END_U = 'eu',
-    END_B = 'eb',
+    END_U = 'eb',
+    END_B = 'eu',
     END_L = 'el',
     END_R = 'er',
-    TURN_OBSTACLE_1 = 'turn1',
+    TURN_TOP_RIGHT = 'turn_tr',
+    TURN_TOP_LEFT = 'turn_tl',
+    TURN_BOTTOM_RIGHT = 'turn_br',
+    TURN_BOTTOM_LEFT = 'turn_bl',
+    TURN_HORIZONTAL_BOTTOM = 'turn_hb',
+    TURN_VERTICAL_RIGHT = 'turn_vr',
+    TURN_VERTICAL_LEFT = 'turn_vl',
     TURN_OBSTACLE_MULTI = 'turn_multi'
 }
 
@@ -40,20 +46,20 @@ const CONFIG = {
 
 const TILE_SPRITE_MAP: Record<string, { sprite: string; rotation: number }> = {
     // Corners
-    [TileType.CORNER_UL]: { sprite: 'tile040', rotation: 0 },
-    [TileType.CORNER_UR]: { sprite: 'tile028', rotation: 0 },
-    [TileType.CORNER_BL]: { sprite: 'tile048', rotation: 0 },
-    [TileType.CORNER_BR]: { sprite: 'tile050', rotation: 0 },
+    [TileType.CORNER_UL]: { sprite: 'tile048', rotation: 0 },
+    [TileType.CORNER_UR]: { sprite: 'tile050', rotation: 0 },
+    [TileType.CORNER_BL]: { sprite: 'tile040', rotation: 0 },
+    [TileType.CORNER_BR]: { sprite: 'tile028', rotation: 0 },
     
     // Borders
-    [TileType.BORDER_U]: { sprite: 'tile041', rotation: 0 },
-    [TileType.BORDER_B]: { sprite: 'tile006', rotation: 0 },
+    [TileType.BORDER_U]: { sprite: 'tile006', rotation: 0 },
+    [TileType.BORDER_B]: { sprite: 'tile041', rotation: 0 },
     [TileType.BORDER_L]: { sprite: 'tile063', rotation: 0 },
     [TileType.BORDER_R]: { sprite: 'tile062', rotation: 0 },
     
     // Obstacles - Start
-    [TileType.START_U]: { sprite: 'tile038', rotation: 0 },
-    [TileType.START_B]: { sprite: 'tile024', rotation: 0 },
+    [TileType.START_U]: { sprite: 'tile024', rotation: 0 },
+    [TileType.START_B]: { sprite: 'tile038', rotation: 0 },
     [TileType.START_L]: { sprite: 'tile020', rotation: 0 },
     [TileType.START_R]: { sprite: 'tile028', rotation: 0 },
     
@@ -62,14 +68,24 @@ const TILE_SPRITE_MAP: Record<string, { sprite: string; rotation: number }> = {
     [TileType.OBSTACLE_L]: { sprite: 'tile017', rotation: 0 },
     [TileType.OBSTACLE_R]: { sprite: 'tile017', rotation: 0 },
     
-    // Obstacles - End (all use below_end_obstacle sprite)
-    [TileType.END_U]: { sprite: 'tile003', rotation: 0 },
-    [TileType.END_B]: { sprite: 'below_end_obstacle', rotation: 0 },
+    // Obstacles - End
+    [TileType.END_U]: { sprite: 'below_end_obstacle', rotation: 0 },
+    [TileType.END_B]: { sprite: 'tile003', rotation: 0 },
     [TileType.END_L]: { sprite: 'tile016', rotation: 0 },
     [TileType.END_R]: { sprite: 'tile018', rotation: 0 },
     
-    // Turns
-    [TileType.TURN_OBSTACLE_1]: { sprite: 'tile063', rotation: 0 },
+    // Turns - L-corners (2 neighbors)
+    [TileType.TURN_TOP_RIGHT]: { sprite: 'tile016', rotation: 0 },
+    [TileType.TURN_TOP_LEFT]: { sprite: 'tile023', rotation: 0 },
+    [TileType.TURN_BOTTOM_RIGHT]: { sprite: 'tile054', rotation: 0 },
+    [TileType.TURN_BOTTOM_LEFT]: { sprite: 'tile055', rotation: 0 },
+    
+    // Turns - T-junctions (3 neighbors)
+    [TileType.TURN_HORIZONTAL_BOTTOM]: { sprite: 'tile038', rotation: 0 },
+    [TileType.TURN_VERTICAL_RIGHT]: { sprite: 'tile054', rotation: 0 },
+    [TileType.TURN_VERTICAL_LEFT]: { sprite: 'tile055', rotation: 0 },
+    
+    // Turns - Cross (4 neighbors)
     [TileType.TURN_OBSTACLE_MULTI]: { sprite: 'tile058', rotation: 0 },
 };
 
@@ -158,7 +174,6 @@ export class SmartMapGenerator2 extends Component {
     private mapData: string[][] = [];
     private mapWidth: number = 0;
     private mapHeight: number = 0;
-    private tileRotations: Map<string, number> = new Map();
 
     // ========================================================================
     // LIFECYCLE
@@ -457,13 +472,11 @@ export class SmartMapGenerator2 extends Component {
 
         // Check inner neighbor based on border position
         if (y === 0) {
-            // Top border - check cell below (y+1)
             if (y + 1 < this.mapHeight && this.mapData[y + 1][x] === TileType.WALL) {
                 return { hasObstacle: true, direction: 'bottom' };
             }
         }
         if (y === maxY) {
-            // Bottom border - check cell above (y-1)
             if (y - 1 >= 0 && this.mapData[y - 1][x] === TileType.WALL) {
                 return { hasObstacle: true, direction: 'top' };
             }
@@ -488,11 +501,11 @@ export class SmartMapGenerator2 extends Component {
         const maxX = this.mapWidth - 1;
         const maxY = this.mapHeight - 1;
 
-        // Four corners - corners remain as corners
-        if (x === 0 && y === 0) return TileType.CORNER_UL;
-        if (x === maxX && y === 0) return TileType.CORNER_UR;
-        if (x === 0 && y === maxY) return TileType.CORNER_BL;
-        if (x === maxX && y === maxY) return TileType.CORNER_BR;
+        // Four corners
+        if (x === 0 && y === 0) return TileType.CORNER_BL;
+        if (x === maxX && y === 0) return TileType.CORNER_BR;
+        if (x === 0 && y === maxY) return TileType.CORNER_UL;
+        if (x === maxX && y === maxY) return TileType.CORNER_UR;
 
         // Check if this border tile has obstacle neighbor pointing inward
         const obstacleCheck = this.hasInnerObstacleNeighbor(x, y);
@@ -500,12 +513,10 @@ export class SmartMapGenerator2 extends Component {
         if (obstacleCheck.hasObstacle) {
             // This border connects to an obstacle
             if (y === 0) {
-                // Top border with obstacle below
-                return TileType.START_U;
+                return TileType.START_B;
             }
             if (y === maxY) {
-                // Bottom border with obstacle above
-                return TileType.START_B;
+                return TileType.START_U;
             }
             if (x === 0) {
                 // Left border with obstacle to the right
@@ -518,8 +529,8 @@ export class SmartMapGenerator2 extends Component {
         }
 
         // Regular border without obstacle neighbor
-        if (y === 0) return TileType.BORDER_U;
-        if (y === maxY) return TileType.BORDER_B;
+        if (y === 0) return TileType.BORDER_B;
+        if (y === maxY) return TileType.BORDER_U;
         if (x === 0) return TileType.BORDER_L;
         if (x === maxX) return TileType.BORDER_R;
 
@@ -542,57 +553,52 @@ export class SmartMapGenerator2 extends Component {
         // Check for turn obstacles (2, 3, or 4 neighbors)
         const turnCheck = this.detectTurnObstacle(pattern);
         if (turnCheck.isTurn) {
-            // Store rotation info for later use in spawnTile()
-            this.tileRotations.set(`${x},${y}`, turnCheck.rotation);
+            // No rotation needed anymore - each pattern has specific sprite
             return turnCheck.tileType;
         }
 
         // Single neighbor = End tile
         if (neighbors === 1) {
-            if (top) return TileType.END_B;    // End pointing down
-            if (bottom) return TileType.END_U; // End pointing up
-            if (left) return TileType.END_R;   // End pointing right
-            if (right) return TileType.END_L;  // End pointing left
+            if (top) return TileType.END_U;
+            if (bottom) return TileType.END_B;
+            if (left) return TileType.END_R;
+            if (right) return TileType.END_L;
         }
 
-        // Two neighbors = Middle tile
+        // Two neighbors = Middle tile (straight lines only, turns handled above)
         if (neighbors === 2) {
             // Vertical (top-bottom)
             if (top && bottom) {
-                // Always use regular OBSTACLE for vertical
                 return TileType.OBSTACLE;
             }
 
-            // Horizontal (left-right) - Check position to determine L or R
+            // Horizontal (left-right)
             if (left && right) {
-                // Check if obstacle is at left or right edge (next to border)
                 if (x === 1) {
-                    // Obstacle next to left border
                     return TileType.OBSTACLE_L;
                 }
                 if (x === this.mapWidth - 2) {
-                    // Obstacle next to right border
                     return TileType.OBSTACLE_R;
                 }
-                // Default to left obstacle for center positions
                 return TileType.OBSTACLE_L;
             }
 
-            // L-shape or corner - use vertical as default
+            // Other 2-neighbor patterns not matched by turns - use fallback
             return TileType.OBSTACLE;
         }
 
-        // Three or more neighbors = Junction/complex
+        // Three or more neighbors not matched - use fallback
         return TileType.OBSTACLE;
     }
 
     /**
-     * Detect turn obstacles (L-corners, T-junctions, crosses)
+     * Detect turn obstacles based on specific patterns from request.md
+     * Analyzed patterns: exactly 7 cases mapped to specific tiles
      */
     private detectTurnObstacle(pattern: NeighborPattern): {
         isTurn: boolean;
         tileType: string;
-        rotation: number; // degrees
+        rotation: number;
     } {
         const { top, bottom, left, right } = pattern;
 
@@ -609,28 +615,49 @@ export class SmartMapGenerator2 extends Component {
             return {
                 isTurn: true,
                 tileType: TileType.TURN_OBSTACLE_MULTI,
-                rotation: 0 // Symmetric, no rotation needed
+                rotation: 0
             };
         }
 
-        // Case 3: T-Junction (3 neighbors) or L-Corner (2 neighbors)
+        // Case 3: L-corners and T-junctions (2 or 3 neighbors)
         if (neighbors === 2 || neighbors === 3) {
-            let rotation = 0;
-
-            if (top && right && bottom) rotation = 180;
-            else if (top && right && !bottom && !left) rotation = 180;
-            else if (right && bottom && left) rotation = 270;
-            else if (right && bottom && !top && !left) rotation = 270;
-            else if (bottom && left && top) rotation = 0;
-            else if (bottom && left && !top && !right) rotation = 0;
-            else if (left && top && right) rotation = 90;
-            else if (left && top && !bottom && !right) rotation = 90;
-
-            return {
-                isTurn: true,
-                tileType: TileType.TURN_OBSTACLE_1,
-                rotation: rotation
-            };
+            // Pattern 1: TOP + RIGHT (L-corner) → tile016
+            if (top && right && !bottom && !left) {
+                return { isTurn: true, tileType: TileType.TURN_TOP_RIGHT, rotation: 0 };
+            }
+            
+            // Pattern 2: TOP + LEFT (L-corner) → tile023
+            if (top && left && !bottom && !right) {
+                return { isTurn: true, tileType: TileType.TURN_TOP_LEFT, rotation: 0 };
+            }
+            
+            // Pattern 3: LEFT + RIGHT + BOTTOM (T-junction) → tile038
+            if (left && right && bottom && !top) {
+                return { isTurn: true, tileType: TileType.TURN_HORIZONTAL_BOTTOM, rotation: 0 };
+            }
+            
+            // Pattern 4: RIGHT + BOTTOM (L-corner) → tile054
+            if (right && bottom && !top && !left) {
+                return { isTurn: true, tileType: TileType.TURN_BOTTOM_RIGHT, rotation: 0 };
+            }
+            
+            // Pattern 5: RIGHT + TOP + BOTTOM (T-junction) → tile054
+            if (right && top && bottom && !left) {
+                return { isTurn: true, tileType: TileType.TURN_VERTICAL_RIGHT, rotation: 0 };
+            }
+            
+            // Pattern 6: LEFT + BOTTOM (L-corner) → tile055
+            if (left && bottom && !top && !right) {
+                return { isTurn: true, tileType: TileType.TURN_BOTTOM_LEFT, rotation: 0 };
+            }
+            
+            // Pattern 7: LEFT + TOP + BOTTOM (T-junction) → tile055
+            if (left && top && bottom && !right) {
+                return { isTurn: true, tileType: TileType.TURN_VERTICAL_LEFT, rotation: 0 };
+            }
+            
+            // No specific pattern matched - return false to use fallback
+            return { isTurn: false, tileType: '', rotation: 0 };
         }
 
         return { isTurn: false, tileType: '', rotation: 0 };
@@ -736,26 +763,12 @@ export class SmartMapGenerator2 extends Component {
                 transform.setContentSize(this.tileSize, this.tileSize);
             }
             
-            // 7. Calculate total rotation
-            let totalRotation = 0;
-            
-            // Base rotation from sprite configuration (from TILEINFO)
-            totalRotation += spriteConfig.rotation;
-            
-            // Dynamic rotation from turn obstacles
-            const rotationKey = `${x},${y}`;
-            if (this.tileRotations.has(rotationKey)) {
-                const dynamicRotation = this.tileRotations.get(rotationKey)!;
-                totalRotation += dynamicRotation;
-                this.tileRotations.delete(rotationKey); // Clean up
+            // 7. Apply base rotation if specified (from TILE_SPRITE_MAP)
+            if (spriteConfig.rotation !== 0) {
+                tileNode.setRotationFromEuler(0, 0, -spriteConfig.rotation);
             }
             
-            // 8. Apply rotation if needed
-            if (totalRotation !== 0) {
-                tileNode.setRotationFromEuler(0, 0, -totalRotation); // Negative for clockwise
-            }
-            
-            // 9. Calculate position
+            // 8. Calculate position
             const anchorX = this.mapWidth * this.tileSize / 2;
             const anchorY = this.mapHeight * this.tileSize / 2;
             const posX = x * this.tileSize - anchorX + this.tileSize / 2;
@@ -763,10 +776,10 @@ export class SmartMapGenerator2 extends Component {
             
             tileNode.setPosition(v3(posX, posY, 0));
             
-            // 10. Add to container
+            // 9. Add to container
             this.mapContainer!.addChild(tileNode);
             
-            this.debug(`Spawned '${spriteConfig.sprite}' (${tileType}) at [${x},${y}] with rotation ${totalRotation}°`);
+            this.debug(`Spawned '${spriteConfig.sprite}' (${tileType}) at [${x},${y}]`);
             return true;
             
         } catch (err) {

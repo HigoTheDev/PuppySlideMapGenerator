@@ -4,20 +4,20 @@ const { ccclass, property } = _decorator;
 enum TileType {
     EMPTY = '0',
     WALL = '1',
-    CORNER_UL = 'cul',
-    CORNER_UR = 'cur',
-    CORNER_BL = 'cbl',
-    CORNER_BR = 'cbr',
-    BORDER_U = 'bu',
-    BORDER_B = 'bb',
+    CORNER_UL = 'cbl',
+    CORNER_UR = 'cbr',
+    CORNER_BL = 'cul',
+    CORNER_BR = 'cur',
+    BORDER_U = 'bb',
+    BORDER_B = 'bu',
     BORDER_L = 'bl',
     BORDER_R = 'br',
-    START_U = 'su',
-    START_B = 'sb',
+    START_U = 'sb',
+    START_B = 'su',
     OBSTACLE = 'o',
     OBSTACLE_SIDE = 'os',
-    END_U = 'eu',
-    END_B = 'eb',
+    END_U = 'eb',
+    END_B = 'eu',
     END_L = 'el',
     END_R = 'er',
     TURN_OBSTACLE_1 = 'turn1',
@@ -58,22 +58,22 @@ interface MapData {
 
 @ccclass('MapPrefabs')
 export class MapPrefabs {
-    @property({ type: Prefab, tooltip: "Góc trên-trái" })
+    @property({ type: Prefab, tooltip: "Góc dưới-trái" })
     upper_left_corner: Prefab | null = null;
 
-    @property({ type: Prefab, tooltip: "Góc trên-phải" })
+    @property({ type: Prefab, tooltip: "Góc dưới-phải" })
     upper_right_corner: Prefab | null = null;
 
-    @property({ type: Prefab, tooltip: "Góc dưới-trái" })
+    @property({ type: Prefab, tooltip: "Góc trên-trái" })
     below_left_corner: Prefab | null = null;
 
-    @property({ type: Prefab, tooltip: "Góc dưới-phải" })
+    @property({ type: Prefab, tooltip: "Góc trên-phải" })
     below_right_corner: Prefab | null = null;
 
-    @property({ type: Prefab, tooltip: "Viền trên" })
+    @property({ type: Prefab, tooltip: "Viền dưới" })
     border_upper: Prefab | null = null;
 
-    @property({ type: Prefab, tooltip: "Viền dưới" })
+    @property({ type: Prefab, tooltip: "Viền trên" })
     border_below: Prefab | null = null;
 
     @property({ type: Prefab, tooltip: "Viền trái" })
@@ -82,10 +82,10 @@ export class MapPrefabs {
     @property({ type: Prefab, tooltip: "Viền phải" })
     border_right: Prefab | null = null;
 
-    @property({ type: Prefab, tooltip: "Đầu chướng ngại vật (từ trên)" })
+    @property({ type: Prefab, tooltip: "Đầu chướng ngại vật (từ dưới)" })
     upper_start_obstacle: Prefab | null = null;
 
-    @property({ type: Prefab, tooltip: "Đầu chướng ngại vật (từ dưới)" })
+    @property({ type: Prefab, tooltip: "Đầu chướng ngại vật (từ trên)" })
     below_start_obstacle: Prefab | null = null;
 
     @property({ type: Prefab, tooltip: "Chướng ngại vật dọc" })
@@ -94,10 +94,10 @@ export class MapPrefabs {
     @property({ type: Prefab, tooltip: "Chướng ngại vật ngang" })
     side_obstacle: Prefab | null = null;
 
-    @property({ type: Prefab, tooltip: "Đuôi chướng ngại vật (hướng lên)" })
+    @property({ type: Prefab, tooltip: "Đuôi chướng ngại vật (hướng xuống)" })
     upper_end_obstacle: Prefab | null = null;
 
-    @property({ type: Prefab, tooltip: "Đuôi chướng ngại vật (hướng xuống)" })
+    @property({ type: Prefab, tooltip: "Đuôi chướng ngại vật (hướng lên)" })
     below_end_obstacle: Prefab | null = null;
 
     @property({ type: Prefab, tooltip: "Đuôi chướng ngại vật (hướng phải)" })
@@ -341,21 +341,20 @@ export class SmartMapGenerator extends Component {
     }
 
     private setupPrefabMap(): void {
-        // Legacy tile codes mapping
-        this.prefabMap.set(TileType.CORNER_UL, this.mapPrefabs.upper_left_corner!);
-        this.prefabMap.set(TileType.CORNER_UR, this.mapPrefabs.upper_right_corner!);
-        this.prefabMap.set(TileType.CORNER_BL, this.mapPrefabs.below_left_corner!);
-        this.prefabMap.set(TileType.CORNER_BR, this.mapPrefabs.below_right_corner!);
-        this.prefabMap.set(TileType.BORDER_U, this.mapPrefabs.border_upper!);
-        this.prefabMap.set(TileType.BORDER_B, this.mapPrefabs.border_below!);
+        this.prefabMap.set(TileType.CORNER_UL, this.mapPrefabs.below_left_corner!);
+        this.prefabMap.set(TileType.CORNER_UR, this.mapPrefabs.below_right_corner!);
+        this.prefabMap.set(TileType.CORNER_BL, this.mapPrefabs.upper_left_corner!);
+        this.prefabMap.set(TileType.CORNER_BR, this.mapPrefabs.upper_right_corner!);
+        this.prefabMap.set(TileType.BORDER_U, this.mapPrefabs.border_below!);
+        this.prefabMap.set(TileType.BORDER_B, this.mapPrefabs.border_upper!);
         this.prefabMap.set(TileType.BORDER_L, this.mapPrefabs.border_left!);
         this.prefabMap.set(TileType.BORDER_R, this.mapPrefabs.border_right!);
-        this.prefabMap.set(TileType.START_U, this.mapPrefabs.upper_start_obstacle!);
-        this.prefabMap.set(TileType.START_B, this.mapPrefabs.below_start_obstacle!);
+        this.prefabMap.set(TileType.START_U, this.mapPrefabs.below_start_obstacle!);
+        this.prefabMap.set(TileType.START_B, this.mapPrefabs.upper_start_obstacle!);
         this.prefabMap.set(TileType.OBSTACLE, this.mapPrefabs.obstacle!);
         this.prefabMap.set(TileType.OBSTACLE_SIDE, this.mapPrefabs.side_obstacle!);
-        this.prefabMap.set(TileType.END_U, this.mapPrefabs.upper_end_obstacle!);
-        this.prefabMap.set(TileType.END_B, this.mapPrefabs.below_end_obstacle!);
+        this.prefabMap.set(TileType.END_U, this.mapPrefabs.below_end_obstacle!);
+        this.prefabMap.set(TileType.END_B, this.mapPrefabs.upper_end_obstacle!);
         this.prefabMap.set(TileType.END_L, this.mapPrefabs.left_end_obstacle!);
         this.prefabMap.set(TileType.END_R, this.mapPrefabs.right_end_obstacle!);
         this.prefabMap.set(TileType.TURN_OBSTACLE_1, this.mapPrefabs.turn_obstacle_1_direct!);
@@ -455,13 +454,11 @@ export class SmartMapGenerator extends Component {
 
         // Check inner neighbor based on border position
         if (y === 0) {
-            // Top border - check cell below (y+1)
             if (y + 1 < this.mapHeight && this.mapData[y + 1][x] === TileType.WALL) {
                 return { hasObstacle: true, direction: 'bottom' };
             }
         }
         if (y === maxY) {
-            // Bottom border - check cell above (y-1)
             if (y - 1 >= 0 && this.mapData[y - 1][x] === TileType.WALL) {
                 return { hasObstacle: true, direction: 'top' };
             }
@@ -486,24 +483,21 @@ export class SmartMapGenerator extends Component {
         const maxX = this.mapWidth - 1;
         const maxY = this.mapHeight - 1;
 
-        // Four corners - corners remain as corners
-        if (x === 0 && y === 0) return TileType.CORNER_UL;
-        if (x === maxX && y === 0) return TileType.CORNER_UR;
-        if (x === 0 && y === maxY) return TileType.CORNER_BL;
-        if (x === maxX && y === maxY) return TileType.CORNER_BR;
+        // Four corners
+        if (x === 0 && y === 0) return TileType.CORNER_BL;
+        if (x === maxX && y === 0) return TileType.CORNER_BR;
+        if (x === 0 && y === maxY) return TileType.CORNER_UL;
+        if (x === maxX && y === maxY) return TileType.CORNER_UR;
 
         // Check if this border tile has obstacle neighbor pointing inward
         const obstacleCheck = this.hasInnerObstacleNeighbor(x, y);
         
         if (obstacleCheck.hasObstacle) {
-            // This border connects to an obstacle - spawn start_obstacle instead
             if (y === 0 ) {
-                // Top border with obstacle below
-                return TileType.START_U;
+                return TileType.START_B;
             }
             if (y === maxY) {
-                // Bottom border with obstacle above
-                return TileType.START_B;
+                return TileType.START_U;
             }
             if (x === 0 || x === maxX) {
                 return TileType.TURN_OBSTACLE_MULTI;
@@ -511,8 +505,8 @@ export class SmartMapGenerator extends Component {
         }
 
         // Regular border without obstacle neighbor
-        if (y === 0) return TileType.BORDER_U;
-        if (y === maxY) return TileType.BORDER_B;
+        if (y === 0) return TileType.BORDER_B;
+        if (y === maxY) return TileType.BORDER_U;
         if (x === 0) return TileType.BORDER_L;
         if (x === maxX) return TileType.BORDER_R;
 
@@ -538,10 +532,10 @@ export class SmartMapGenerator extends Component {
 
         // Single neighbor = End tile
         if (neighbors === 1) {
-            if (top) return TileType.END_B;    // End pointing down
-            if (bottom) return TileType.END_U; // End pointing up
-            if (left) return TileType.END_R;   // End pointing right
-            if (right) return TileType.END_L;  // End pointing left
+            if (top) return TileType.END_U;
+            if (bottom) return TileType.END_B;
+            if (left) return TileType.END_R;
+            if (right) return TileType.END_L;
         }
 
         // Two neighbors = Middle tile
