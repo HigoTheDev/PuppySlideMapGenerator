@@ -71,18 +71,7 @@ const TILE_SPRITE_MAP: Record<string, { sprite: string; rotation: number }> = {
     // Turns
     [TileType.TURN_OBSTACLE_1]: { sprite: 'tile063', rotation: 0 },
     [TileType.TURN_OBSTACLE_MULTI]: { sprite: 'tile058', rotation: 0 },
-
-    //Overlay (DISABLED - Temporarily commented out)
-    // ['overlay_end_u']: { sprite: 'tile003', rotation: 0 },
 };
-
-// ============================================================================
-// 3D OVERLAY SYSTEM (DISABLED - Temporarily commented out)
-// ============================================================================
-// const TILE_OVERLAY_RULES: Partial <Record<string, string>> = {
-//     // END_U has neighbor at BOTTOM, overlay spawns ABOVE (y-1) where it's empty
-//     [TileType.END_U]: 'overlay_end_u',
-// }
 
 
 interface NeighborPattern {
@@ -113,15 +102,6 @@ export class SmartMapGenerator2 extends Component {
     // ========================================================================
     // PROPERTIES
     // ========================================================================
-
-    // ========================================================================
-    // 3D OVERLAY PROPERTY (DISABLED - Temporarily commented out)
-    // ========================================================================
-    // @property({
-    //     tooltip: "Bật/tắt 3D overlay system (spawn border sprites trên obstacles)",
-    //     group: { name: "Advanced Settings", id: "advanced" }
-    // })
-    // use3DOverlay: boolean = true;
 
     @property({
         type: Prefab,
@@ -608,7 +588,6 @@ export class SmartMapGenerator2 extends Component {
 
     /**
      * Detect turn obstacles (L-corners, T-junctions, crosses)
-     * KEEP ORIGINAL LOGIC FROM GenTest.ts
      */
     private detectTurnObstacle(pattern: NeighborPattern): {
         isTurn: boolean;
@@ -635,7 +614,6 @@ export class SmartMapGenerator2 extends Component {
         }
 
         // Case 3: T-Junction (3 neighbors) or L-Corner (2 neighbors)
-        // Both use turn_obstacle_1_direct
         if (neighbors === 2 || neighbors === 3) {
             let rotation = 0;
 
@@ -675,11 +653,6 @@ export class SmartMapGenerator2 extends Component {
         let tilesRendered = 0;
         let tilesSkipped = 0;
 
-        // ====================================================================
-        // 3D OVERLAY: Store detected tile types (DISABLED - commented out)
-        // ====================================================================
-        // const detectedTiles: Map<string, string> = new Map();
-
         // Iterate through each tile
         for (let y = 0; y < this.mapHeight; y++) {
             for (let x = 0; x < this.mapWidth; x++) {
@@ -702,12 +675,6 @@ export class SmartMapGenerator2 extends Component {
                     // Legacy mode: use tile value directly
                     tileType = tileValue;
                 }
-
-                // ============================================================
-                // 3D OVERLAY: Store tile type (DISABLED - commented out)
-                // ============================================================
-                // detectedTiles.set(`${x},${y}`, tileType);
-
                 // Spawn tile
                 if (this.spawnTile(tileType, x, y)) {
                     tilesRendered++;
@@ -722,77 +689,8 @@ export class SmartMapGenerator2 extends Component {
             `Map rendered: ${tilesRendered} tiles in ${(endTime - startTime).toFixed(2)}ms ` +
             `(${tilesSkipped} skipped)`
         );
-        
-        // ====================================================================
-        // 3D OVERLAY: Process overlays (DISABLED - commented out)
-        // ====================================================================
-        // this.processOverlays(detectedTiles);
+
     }
-
-    // ========================================================================
-    // 3D OVERLAY SYSTEM - processOverlays() (DISABLED - Temporarily commented out)
-    // ========================================================================
-    // /**
-    //  * Process and spawn overlay tiles for tiles with overlay rules
-    //  * Called after renderMap() completes
-    //  */
-    // private processOverlays(detectedTiles: Map<string, string>): void {
-    //     // Check nếu feature disabled
-    //     if (!this.use3DOverlay) {
-    //         return;
-    //     }
-
-    //     this.debug('[3DOverlay] Processing overlays...');
-
-    //     let overlaysSpawned = 0;
-
-    //     for (let y = 0; y < this.mapHeight; y++) {
-    //         for (let x = 0; x < this.mapWidth; x++) {
-    //             // Get detected tile type (not raw mapData value)
-    //             const detectedTileType = detectedTiles.get(`${x},${y}`);
-    //             if (!detectedTileType) {
-    //                 continue; // No tile at this position
-    //             }
-
-    //             // Check if this tile type has overlay rule
-    //             const overlayTileType = TILE_OVERLAY_RULES[detectedTileType];
-    //             if (!overlayTileType) {
-    //                 continue; // No overlay rule for this tile type
-    //             }
-
-    //             // Calculate target position based on tile type
-    //             let targetY: number;
-                
-    //             if (detectedTileType === TileType.END_U) {
-    //                 // END_U has neighbor at BOTTOM, spawn overlay ABOVE (y-1)
-    //                 targetY = y - 1;
-    //             } else {
-    //                 // Default: spawn below (for future tile types)
-    //                 targetY = y + 1;
-    //             }
-
-    //             // Validate: Target cell phải trong bounds
-    //             if (targetY < 0 || targetY >= this.mapHeight) {
-    //                 this.debug(`[3DOverlay] Target position [${x},${targetY}] out of bounds`);
-    //                 continue;
-    //             }
-
-    //             // Validate: Target cell phải empty
-    //             if (this.mapData[targetY][x] !== TileType.EMPTY) {
-    //                 this.debug(`[3DOverlay] Target cell [${x},${targetY}] not empty (value: ${this.mapData[targetY][x]})`);
-    //                 continue;
-    //             }
-
-    //             // Spawn overlay tile tại target position
-    //             if (this.spawnTile(overlayTileType, x, targetY)) {
-    //                 overlaysSpawned++;
-    //                 this.debug(`[3DOverlay] Spawned '${overlayTileType}' at [${x},${targetY}] for base tile '${detectedTileType}' at [${x},${y}]`);
-    //             }
-    //         }
-    //     }
-
-    //     this.debug(`[3DOverlay] Completed: ${overlaysSpawned} overlays spawned`);
-    // }
 
     private spawnTile(tileType: string, x: number, y: number): boolean {
         // Validate generic prefab exists
@@ -878,7 +776,7 @@ export class SmartMapGenerator2 extends Component {
     }
 
     // ========================================================================
-    // PUBLIC API (from GenTest.ts)
+    // PUBLIC API
     // ========================================================================
 
     /**
